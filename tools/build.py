@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """exe をビルドする。
 
-    python tools/build.py            # onefile と onedir(zip) の両方
+    python tools/build.py            # onefile / onedir(zip) / setup.exe の全部
     python tools/build.py onefile    # 1 つの exe だけ
     python tools/build.py onedir     # フォルダ版 (zip) だけ
+    python tools/build.py setup      # インストーラだけ (onedir を先に作る)
 
 Windows Defender の誤検知 (Trojan:Win32/Wacatac.*!ml) 対策として、
 このスクリプトは次を必ず行う。ふわふわタイマーで実際に踏んだ対策。
@@ -152,6 +153,37 @@ def build_onedir(ver):
     return zip_path
 
 
+ISCC_CANDIDATES = (
+    r"%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe",
+    r"%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe",
+    r"%ProgramFiles%\Inno Setup 6\ISCC.exe",
+)
+
+
+def find_iscc():
+    for p in ISCC_CANDIDATES:
+        p = os.path.expandvars(p)
+        if os.path.exists(p):
+            return p
+    return shutil.which("ISCC") or shutil.which("iscc")
+
+
+def build_setup(ver):
+    """Inno Setup で setup.exe を作る。onedir の中身をそのまま詰める。"""
+    iscc = find_iscc()
+    if not iscc:
+        print("  ! Inno Setup が見つからないので setup.exe は作りません")
+        print("    winget install JRSoftware.InnoSetup で入ります")
+        return None
+    src = os.path.join(PROJ, "dist", NAME + "-dir")
+    if not os.path.isdir(src):
+        print("  ! %s が無いので、先に onedir を作ってください" % src)
+        return None
+    iss = os.path.join(PROJ, "installer", NAME + ".iss")
+    run([iscc, "/DMyVersion=" + ver, iss])
+    return os.path.join(PROJ, "dist", "%s-%s-setup.exe" % (NAME, ver))
+
+
 def defender_scan(path):
     mp = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"),
                       "Windows Defender", "MpCmdRun.exe")
@@ -174,8 +206,13 @@ def main():
     made = []
     if what in ("all", "onefile"):
         made.append(build_onefile(ver))
-    if what in ("all", "onedir"):
+    if what in ("all", "onedir", "setup"):
         made.append(build_onedir(ver))
+    if what in ("all", "setup"):
+        # setup.exe は onedir の中身をそのまま使うので、消す前に作る
+        setup = build_setup(ver)
+        if setup:
+            made.append(setup)
 
     stray = os.path.join(PROJ, "dist", NAME + "-dir")
     if os.path.isdir(stray):

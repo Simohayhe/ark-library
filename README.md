@@ -13,11 +13,19 @@ ARK: Survival Ascended の生物を、ゲーム内の「恐竜のエクスポー
 
 ## 入れかた
 
-[リリース](https://github.com/Simohayhe/ark-library/releases/latest) から
-`ArkLibrary.exe` を落とすだけ。インストール不要・追加ソフト不要。
-フォルダ版 (`ArkLibrary-x.y.z-win64.zip`) もあり、こちらは起動が速い。
+[リリース](https://github.com/Simohayhe/ark-library/releases/latest) から好きなものを。
+
+| ファイル | どんなとき |
+|---|---|
+| `ArkLibrary-x.y.z-setup.exe` | **ふつうはこれ**。スタートメニューに入り、Windows起動時に自動で開く設定もできる |
+| `ArkLibrary.exe` | インストールしたくないとき。1 ファイルで動く |
+| `ArkLibrary-x.y.z-win64.zip` | フォルダ版。展開して置くだけ。起動がいちばん速い |
+
+インストーラは**管理者権限を要求しない** (`%LOCALAPPDATA%\Programs\ArkLibrary` に入る)。
+アンインストールしても、取り込んだライブラリは残る (消すかどうかは聞かれる)。
 
 更新は **設定 → 更新を確認** から。新しい版があればその場で入れ替えて再起動する。
+インストーラで入れたなら setup.exe を、そうでなければ exe か zip を自動で選ぶ。
 
 ソースから動かす場合 (Python 3.12 + tkinter のみ。追加ライブラリなし):
 
@@ -241,6 +249,7 @@ ui/                   tkinter の画面
   update_dialog.py    「更新を確認」の中身
 data/species.json     種族データ 772 種 (うち ASA 579 種)
 tools/                テストと開発用
+installer/            Inno Setup のインストーラ定義
 ```
 
 データベースは `%LOCALAPPDATA%\ArkLibrary\library.db`。
@@ -252,7 +261,7 @@ python tools/test_import.py    取り込み〜逆算〜交配プランの通し 
 python tools/test_alerts.py    名前の組み立てと記録判定 (20 件)
 python tools/smoke_ui.py <db>  画面・ダイアログ・自動取り込みの通し
 python tools/seed_demo.py <db> 動作確認用のデモデータを作る
-python tools/build.py          exe をビルドする (onefile と zip)
+python tools/build.py          exe をビルドする (onefile / zip / setup.exe)
 python tools/make_ico.py       アイコンを作り直す
 ```
 
