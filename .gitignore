@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.spec
+build_version_info.txt
+*.db
+demo*.db
