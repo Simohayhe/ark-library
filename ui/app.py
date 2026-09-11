@@ -19,7 +19,6 @@ DEFAULT_THEME = "modern"
 
 NAV = [
     ("library", "ライブラリ", "🦖"),
-    ("plan", "交配プラン", "💞"),
     ("import", "取り込み", "📥"),
     ("alerts", "取り込み通知", "🔔"),
     ("settings", "設定", "⚙"),

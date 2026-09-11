@@ -70,7 +70,10 @@ class LibraryPage(tk.Frame):
                           bg=theme.BG).pack(side="right", padx=3)
         theme.RoundButton(right, "変異を割り出す", self._reassign_mutations,
                           kind="soft", bg=theme.BG).pack(side="right", padx=3)
-        theme.RoundButton(right, "交配プランへ", self._to_plan, kind="primary",
+        self.plan_btn = theme.RoundButton(right, "交配計画", self._toggle_plan,
+                                          kind="primary", bg=theme.BG)
+        self.plan_btn.pack(side="right", padx=3)
+        theme.RoundButton(right, "名前の付け方", self._naming_dialog, kind="soft",
                           bg=theme.BG).pack(side="right", padx=3)
 
         bar = tk.Frame(self, bg=theme.BG)
@@ -126,6 +129,11 @@ class LibraryPage(tk.Frame):
                                font=theme.F.get("small"), justify="left",
                                anchor="w")
         self.detail.pack(fill="x", pady=(8, 0))
+
+        # 交配計画。既定では畳んでおいて、ボタンで開く
+        self.plan_holder = tk.Frame(right_box, bg=theme.BG)
+        self.plan_page = None
+        self.plan_open = False
 
     # ---- データ --------------------------------------------------------
 
@@ -183,6 +191,7 @@ class LibraryPage(tk.Frame):
         self._build_table(self.stat_list)
         self._fill_table()
         self._update_header()
+        self._sync_plan()
 
     def _goals_for(self, stat_list):
         """交配プラン画面で決めた狙い方。無ければ全部「最高狙い」。"""
@@ -336,6 +345,10 @@ class LibraryPage(tk.Frame):
         c = row.get("_obj")
         if c is None:
             return
+        if self.plan_open and self.plan_page is not None:
+            self.plan_page.set_focus(c)
+            if self.plan_page.tab not in ("partner",):
+                pass          # ほかのタブを見ている最中なら邪魔しない
         parts = []
         if c.ambiguous:
             parts.append("⚠ 表示値だけではレベルの内訳が一つに決まらなかった個体")
@@ -410,11 +423,41 @@ class LibraryPage(tk.Frame):
         messagebox.showinfo("変異の割り出し", "\n".join(lines), parent=self)
         self._after_change()
 
-    def _to_plan(self):
-        self.app.show("plan")
-        page = self.app._pages.get("plan")
-        if page is not None and self.species_bp:
-            page.select_species(self.species_bp)
+    # ---- 交配計画 ------------------------------------------------------
+
+    def _toggle_plan(self):
+        """同じ画面の下に交配計画を出す / しまう。"""
+        if self.plan_open:
+            self.plan_holder.pack_forget()
+            self.plan_open = False
+            self.plan_btn.set_text("交配計画")
+            return
+        if self.plan_page is None:
+            from .page_plan import PlanPage
+            self.plan_page = PlanPage(self.plan_holder, self.app, embedded=True)
+            self.plan_page.pack(fill="both", expand=True)
+        self.plan_holder.pack(fill="both", expand=True, pady=(8, 0))
+        self.plan_open = True
+        self.plan_btn.set_text("計画を閉じる")
+        self._sync_plan()
+
+    def _sync_plan(self):
+        """いま選んでいる種族と個体を、下の交配計画に渡す。"""
+        if not self.plan_open or self.plan_page is None:
+            return
+        if self.species_bp:
+            self.plan_page.select_species(self.species_bp)
+        self.plan_page.set_focus(self.table.selected_obj() if self.table else None)
+
+    def _naming_dialog(self):
+        """この種族だけ、名前に入れるステータスを変える。"""
+        if self.species is None:
+            messagebox.showinfo("ARK ライブラリ", "先に種族を選んでください。",
+                                parent=self)
+            return
+        from .naming_dialog import SpeciesNamingDialog
+        SpeciesNamingDialog(self, self.app, self.species_bp,
+                            self.species.display_name, self.stat_list)
 
 
 class _StatusDialog(tk.Toplevel):

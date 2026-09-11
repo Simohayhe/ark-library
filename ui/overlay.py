@@ -129,6 +129,24 @@ class StatOverlay(object):
 
         self._place(win)
 
+    def show_loading(self, filename):
+        """取り込み中の仮表示。中身が出来たらそのまま差し替わる。
+
+        逆算に時間がかかることがある (強化レベルを振ったテイム個体など) ので、
+        まず「読んでいる」ことだけ先に出す。
+        """
+        win, box = self._open(theme.LAV)
+        if win is None:
+            return
+        row = tk.Frame(box, bg=theme.CARD)
+        row.pack(fill="x", padx=18, pady=(12, 12))
+        tk.Label(row, text="読み込み中…", bg=theme.CARD, fg=theme.INK,
+                 font=theme.F.get("head")).pack(side="left")
+        tk.Label(row, text=filename, bg=theme.CARD, fg=theme.INK_SUB,
+                 font=theme.F.get("small")).pack(side="left", padx=12)
+        # 自動で消さない。結果が出たら差し替わる
+        self._place(win, auto_hide=False)
+
     def show_error(self, filename, problems):
         """取り込めなかったときの表示。"""
         win, box = self._open(theme.RED)
@@ -197,7 +215,7 @@ class StatOverlay(object):
             self.win = None
             return None, None
 
-    def _place(self, win):
+    def _place(self, win, auto_hide=True):
         win.update_idletasks()
         w, h = win.winfo_width(), win.winfo_height()
         sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
@@ -212,7 +230,7 @@ class StatOverlay(object):
         win.geometry("+%d+%d" % (int(x), int(y)))
         win.deiconify()
         no_focus(win)
-        if self.seconds > 0:
+        if auto_hide and self.seconds > 0:
             self._job = self.master.after(int(self.seconds * 1000), self.hide)
 
 

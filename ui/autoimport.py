@@ -23,7 +23,7 @@ from .overlay import StatOverlay
 # 見張る間隔の既定 (ミリ秒)。エクスポートしてから名前がコピーされるまでの
 # 待ち時間はほぼこれで決まるので、短めにしてある。
 # 中身を読むのは 20 ms ほどなので、短くしても負担にならない。
-DEFAULT_INTERVAL = 200
+DEFAULT_INTERVAL = 120
 
 # 出来たてのファイルを読み損ねたときに、黙ってやり直す猶予 (秒)。
 # 書き込みの途中を掴むことがあるので、この間の失敗は「失敗」と数えない。
@@ -82,7 +82,12 @@ class AutoImport(object):
         specs[event] = spec
         self.st.library.set_setting("sound_specs", specs)
 
-    def naming_stats(self):
+    def naming_stats(self, species_bp=None):
+        """名前に入れるステータス。種族ごとの設定があればそちらを使う。"""
+        if species_bp:
+            own = self.st.library.get_setting("naming_stats_%s" % species_bp, None)
+            if own:
+                return [int(s) for s in own]
         got = self.get("naming_stats")
         return list(got) if got else list(naming.DEFAULT_STATS)
 
@@ -187,6 +192,15 @@ class AutoImport(object):
         sm = self.st.multipliers.with_single_player_applied()
         server = self.st.server
 
+        # 逆算に時間がかかることがあるので、先に「読み込み中」だけ出しておく。
+        # ここで一度描いておくと、待たされても画面に何か出ている
+        if announce and self.get("overlay_enabled"):
+            self.overlay.show_loading(os.path.basename(path))
+            try:
+                self.app.update_idletasks()
+            except Exception:
+                pass
+
         # 記録の判定を挟みたいので、ここでは保存しない
         res = import_file(path, self.st.species_db, sm, library=None,
                           server=server, game=self.st.game,
@@ -217,7 +231,8 @@ class AutoImport(object):
         check = records.check(cr, others, stat_list, goals=goals)
 
         name_text = naming.make_name(
-            cr, self.naming_stats(), bool(self.get("naming_with_sex")),
+            cr, self.naming_stats(cr.species_bp),
+            bool(self.get("naming_with_sex")),
             mutation_mark=self.get("naming_mutation_mark") or "",
             mode=self.get("naming_mode") or naming.MODE_ALL)
         if self.get("naming_fill_empty") and not cr.name:

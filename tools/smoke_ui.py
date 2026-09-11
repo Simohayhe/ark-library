@@ -31,17 +31,26 @@ def step(name, fn):
 app = App(db)
 app.update()
 
-for page in ("library", "plan", "import", "settings"):
+for page in ("library", "import", "settings"):
     step("画面: %s" % page, lambda p=page: (app.show(p), app.update()))
-
-for tab in ("pairs", "plan", "mutation"):
-    step("交配プランのタブ: %s" % tab,
-         lambda t=tab: (app._pages["plan"]._set_tab(t),
-                        app._pages["plan"].recalc(), app.update()))
 
 lib_page = app._pages["library"]
 app.show("library")
 app.update()
+
+# 交配計画はライブラリ画面の中に畳まれている
+step("交配計画を開く", lambda: (lib_page._toggle_plan(), app.update(),
+                                _check(lib_page.plan_open, "開かない")))
+for tab in ("partner", "pairs", "plan", "mutation", "color"):
+    step("交配計画のタブ: %s" % tab,
+         lambda t=tab: (lib_page.plan_page._set_tab(t),
+                        lib_page.plan_page.recalc(), app.update()))
+step("個体を選ぶと相手を探す",
+     lambda: (lib_page.table.select_by(lambda r: True), app.update(),
+              _check(lib_page.plan_page.focus_creature is not None,
+                     "対象が渡っていない")))
+step("交配計画を閉じる", lambda: (lib_page._toggle_plan(), app.update(),
+                                  _check(not lib_page.plan_open, "閉じない")))
 
 step("実数値表示の切り替え", lambda: (lib_page.show_values.set(True),
                                      lib_page._fill_table(),
@@ -102,6 +111,22 @@ step("通知: オーバーレイを出してみる",
               app.autoimport.overlay.hide()))
 step("通知: 設定の保存", lambda: (al._save_naming(), al._save_overlay(),
                                  al._save_auto(), app.update()))
+
+def _naming_dialog():
+    from ui.naming_dialog import SpeciesNamingDialog
+    d = SpeciesNamingDialog(lib_page, app, lib_page.species_bp,
+                            lib_page.species.display_name, lib_page.stat_list)
+    app.update()
+    d._save()
+    _check(app.autoimport.naming_stats(lib_page.species_bp) ==
+           app.state_obj.library.get_setting(
+               "naming_stats_%s" % lib_page.species_bp), "種族別設定が効かない")
+    d._clear()
+    app.update()
+    d.destroy()
+
+
+step("種族ごとの名前設定", _naming_dialog)
 
 step("種族データに追加ぶんが入っている",
      lambda: _check(app.state_obj.species_db.extra_count >= 1, "extra が 0"))
