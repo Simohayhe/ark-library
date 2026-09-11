@@ -15,7 +15,7 @@ import threading
 import time
 import tkinter as tk
 
-from arklib import ark, naming, records, sounds
+from arklib import ark, breeding, naming, records, sounds
 from arklib.importers import detect_kind, import_file
 
 from .overlay import StatOverlay
@@ -28,6 +28,7 @@ DEFAULTS = {
     "naming_stats": None,                # None なら naming.DEFAULT_STATS
     "naming_with_sex": True,
     "naming_mutation_mark": "",
+    "naming_mode": naming.MODE_ALL,
     "naming_fill_empty": True,           # 名前が空の個体にはこの名前を入れておく
     "overlay_enabled": True,
     "overlay_seconds": 5.0,
@@ -77,6 +78,19 @@ class AutoImport(object):
 
     def folder(self):
         return self.st.library.get_setting("import_folder", "") or ""
+
+    def goals_for(self, species_bp, stat_list):
+        """交配プラン画面で決めた「狙い方」を読む。無ければ全部 最高狙い。"""
+        saved = self.st.library.get_setting("plan_goals_%s" % species_bp, None)
+        if not saved:
+            return {s: breeding.MAX for s in stat_list}
+        out = {}
+        for key, goal in saved.items():
+            try:
+                out[int(key)] = goal
+            except (TypeError, ValueError):
+                continue
+        return out or {s: breeding.MAX for s in stat_list}
 
     # ---- 開始 / 停止 ---------------------------------------------------
 
@@ -169,11 +183,14 @@ class AutoImport(object):
         others = lib.by_species(cr.species_bp, server or None, include_dead=False)
         stat_list = [s for s in res.species.displayed_stat_indices()
                      if s != ark.TORPIDITY]
-        check = records.check(cr, others, stat_list)
+        # 交配プランで決めた狙い方 (ゼロ狙いなど) を記録判定にも使う
+        goals = self.goals_for(cr.species_bp, stat_list)
+        check = records.check(cr, others, stat_list, goals=goals)
 
         name_text = naming.make_name(
             cr, self.naming_stats(), bool(self.get("naming_with_sex")),
-            mutation_mark=self.get("naming_mutation_mark") or "")
+            mutation_mark=self.get("naming_mutation_mark") or "",
+            mode=self.get("naming_mode") or naming.MODE_ALL)
         if self.get("naming_fill_empty") and not cr.name:
             cr.name = name_text
 

@@ -3,7 +3,7 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from arklib import ark, breeding, stats
+from arklib import ark, breeding, colors as arkcolors, stats
 from arklib.creature import (FEMALE, MALE, STATUS_ALIVE, STATUS_CRYO,
                              STATUS_DEAD, STATUS_JA, STATUS_OBELISK)
 
@@ -14,6 +14,14 @@ from .table import Col, Table
 def stat_columns(species):
     out = [s for s in species.displayed_stat_indices() if s != ark.TORPIDITY]
     return out
+
+
+def _ink_on(hex_color):
+    """塗った色の上で読める文字色を選ぶ (明るい色なら黒、暗い色なら白)。"""
+    r = int(hex_color[1:3], 16)
+    g = int(hex_color[3:5], 16)
+    b = int(hex_color[5:7], 16)
+    return "#000000" if (r * 299 + g * 587 + b * 114) / 1000.0 > 140 else "#FFFFFF"
 
 
 SHORT_JA = {
@@ -188,6 +196,12 @@ class LibraryPage(tk.Frame):
 
     # ---- 表 ------------------------------------------------------------
 
+    def _color_regions(self):
+        """この種族が使っている色領域。色データが無ければ空。"""
+        if not self.species_bp or not arkcolors.available():
+            return []
+        return arkcolors.used_regions(self.species_bp)
+
     def _build_table(self, stat_list):
         for w in self.table_holder.winfo_children():
             w.destroy()
@@ -198,6 +212,11 @@ class LibraryPage(tk.Frame):
         for s in stat_list:
             cols.append(Col("s%d" % s, SHORT_JA.get(s, ark.NAMES_JA[s]),
                             56, align="e", numeric=True))
+        for i in self._color_regions():
+            cols.append(Col("c%d" % i,
+                            arkcolors.region_name(self.species_bp, i)[:4],
+                            46, align="center",
+                            sort_key=lambda r, k="c%d" % i: r.get("_" + k, 0)))
         cols += [Col("mut", "変異", 42, align="e", numeric=True),
                  Col("imp", "刷込", 46, align="e"),
                  Col("state", "種別", 52, align="center"),
@@ -233,6 +252,10 @@ class LibraryPage(tk.Frame):
                 "server": c.server,
                 "note": c.notes,
             }
+            for i in self._color_regions():
+                cid = c.colors[i] if i < len(c.colors) else 0
+                row["c%d" % i] = str(cid) if cid else ""
+                row["_c%d" % i] = cid
             for s in getattr(self, "stat_list", []):
                 if self.show_values.get():
                     row["s%d" % s] = stats.format_value(s, c.values[s]) \
@@ -246,6 +269,12 @@ class LibraryPage(tk.Frame):
             self.table._redraw()
 
     def _cell_style(self, row, key):
+        if key.startswith("c") and key[1:].isdigit():
+            cid = row.get("_" + key) or 0
+            bg = arkcolors.hex_of(cid) if cid else None
+            if not bg:
+                return None
+            return (bg, _ink_on(bg), False)
         if not key.startswith("s"):
             return None
         try:

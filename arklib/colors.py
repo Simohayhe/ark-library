@@ -1,0 +1,165 @@
+# -*- coding: utf-8 -*-
+"""生物の色。
+
+ARK の生物は色領域を最大 6 つ持っていて、それぞれに「色 ID」(1〜100 くらい) が
+入っている。交配では**領域ごとに独立して、どちらかの親の色をそのまま貰う**
+(ふつうは 50% ずつ)。だから色は「混ざらない」。狙った色を出すには、その色を
+持っている親を用意して掛け合わせるしかない。
+
+エクスポートの中身
+------------------
+    Export Gun (.sav/.json) … ColorSetIndices に **色 ID がそのまま**入っている
+    標準エクスポート (.ini) … ColorSet[n]=(R=..,G=..,B=..,A=..) と **色そのもの**が
+                              入っているので、いちばん近い定義色を探して ID に直す
+
+(R=0,G=0,B=0,A=1) は「その領域は使っていない」の意味で、ID 0 とする。
+"""
+import io
+import json
+import os
+import sys
+
+REGION_COUNT = 6
+NO_COLOR = 0
+
+_DATA = None
+
+
+def _find_data(name):
+    here = os.path.dirname(os.path.abspath(__file__))
+    roots = [os.path.dirname(here)]
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        roots.insert(0, base)
+    roots.append(os.path.dirname(os.path.abspath(sys.executable)))
+    for root in roots:
+        path = os.path.join(root, "data", name)
+        if os.path.isfile(path):
+            return path
+    return os.path.join(roots[0], "data", name)
+
+
+def _load():
+    global _DATA
+    if _DATA is None:
+        try:
+            with io.open(_find_data("colors.json"), encoding="utf-8-sig") as f:
+                raw = json.load(f)
+        except (OSError, ValueError):
+            raw = {"colors": {}, "species": {}}
+        _DATA = {
+            "colors": {int(k): v for k, v in (raw.get("colors") or {}).items()},
+            "species": raw.get("species") or {},
+            "source": raw.get("source") or {},
+        }
+    return _DATA
+
+
+def available():
+    return bool(_load()["colors"])
+
+
+def count():
+    return len(_load()["colors"])
+
+
+# ---- 1 色ぶんの情報 ----------------------------------------------------
+
+
+def name_of(color_id):
+    got = _load()["colors"].get(int(color_id or 0))
+    if not got:
+        return "" if not color_id else "色%d" % color_id
+    return got[0]
+
+
+def rgba_of(color_id):
+    got = _load()["colors"].get(int(color_id or 0))
+    return list(got[1]) if got else None
+
+
+def hex_of(color_id):
+    """画面に出すための #RRGGBB。無い色は None。"""
+    rgba = rgba_of(color_id)
+    if not rgba:
+        return None
+    r, g, b = rgba[0], rgba[1], rgba[2]
+    return "#%02X%02X%02X" % (_c(r), _c(g), _c(b))
+
+
+def _c(v):
+    return max(0, min(255, int(round(float(v) * 255))))
+
+
+def label_of(color_id):
+    if not color_id:
+        return "なし"
+    return "%s (%d)" % (name_of(color_id), color_id)
+
+
+def all_ids():
+    return sorted(_load()["colors"])
+
+
+# ---- RGBA → 色 ID ------------------------------------------------------
+
+
+def closest_id(rgba):
+    """エクスポートに入っていた色に、いちばん近い定義色の ID を返す。
+
+    ARKStatsExtractor/ArkColors.ClosestColorId と同じ考え方 (RGBA の距離)。
+    """
+    if not rgba:
+        return NO_COLOR
+    r, g, b, a = (list(rgba) + [0, 0, 0, 0])[:4]
+    # 黒くて不透明 = その領域は使っていない
+    if r == 0 and g == 0 and b == 0 and a == 1:
+        return NO_COLOR
+    best_id, best_d = NO_COLOR, None
+    for cid, (_name, c) in _load()["colors"].items():
+        d = ((c[0] - r) ** 2 + (c[1] - g) ** 2 + (c[2] - b) ** 2
+             + (c[3] - a) ** 2)
+        if best_d is None or d < best_d:
+            best_id, best_d = cid, d
+    return best_id
+
+
+def ids_from_rgba_map(color_rgba):
+    """{領域番号: (r,g,b,a)} を 6 個の色 ID に直す。"""
+    out = [NO_COLOR] * REGION_COUNT
+    for idx, rgba in (color_rgba or {}).items():
+        if 0 <= int(idx) < REGION_COUNT:
+            out[int(idx)] = closest_id(rgba)
+    return out
+
+
+# ---- 種族の色領域 ------------------------------------------------------
+
+
+def regions(species_bp):
+    """その種族の色領域。[{name, ids} または None] を 6 個。"""
+    got = _load()["species"].get(species_bp)
+    if not got:
+        return [None] * REGION_COUNT
+    out = list(got)[:REGION_COUNT]
+    while len(out) < REGION_COUNT:
+        out.append(None)
+    return out
+
+
+def used_regions(species_bp):
+    """使っている領域の番号だけ。"""
+    return [i for i, r in enumerate(regions(species_bp)) if r]
+
+
+def region_name(species_bp, index):
+    got = regions(species_bp)
+    r = got[index] if 0 <= index < len(got) else None
+    return (r or {}).get("name") or "領域%d" % index
+
+
+def possible_ids(species_bp, index):
+    """その領域に野生で出うる色 ID。空なら分からない。"""
+    got = regions(species_bp)
+    r = got[index] if 0 <= index < len(got) else None
+    return list((r or {}).get("ids") or [])

@@ -11,7 +11,7 @@
 import os
 import re
 
-from .. import ark, breeding
+from .. import ark, breeding, colors
 from ..creature import (STATE_BRED, STATE_TAMED, STATE_WILD, UNKNOWN_SEX,
                         Creature)
 from . import dino_export_ini, export_gun
@@ -184,6 +184,8 @@ def _build(res, ec, kind, species_db, sm, library, server, game, parent_lookup):
         cr.ambiguous = ex.ambiguous
         res.ambiguous = ex.ambiguous
         res.solutions = ex.solutions
+        # ini には色そのものが入っているので、いちばん近い定義色の ID に直す
+        cr.colors = colors.ids_from_rgba_map(getattr(ec, "color_rgba", None))
 
     # --- 変異レベルの振り分け (親が居るときだけ) ------------------------
     if cr.is_bred and (cr.mother_ark_id or cr.father_ark_id):

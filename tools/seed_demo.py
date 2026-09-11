@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from arklib import ark, paths, stats
+from arklib import ark, colors, paths, stats
 from arklib.creature import FEMALE, MALE, STATUS_CRYO, STATUS_DEAD, Creature
 from arklib.library import Library
 from arklib.multipliers import ServerMultipliers
@@ -99,6 +99,11 @@ def main():
                     sp, s, l, mm, ld[s], True, taming_eff=1.0,
                     imprinting_bonus=c.imprint,
                     imprint_stat_scale=sm.imprint_stat_scale)
+            # 色。その種族に出うる色からいくつか選ぶ
+            for r in colors.used_regions(sp.bp):
+                ids = colors.possible_ids(sp.bp, r)
+                if ids:
+                    c.colors[r] = rnd.choice(ids[:6])
             if i == count - 1:
                 c.status = STATUS_CRYO
                 c.notes = "クライオ保管中"

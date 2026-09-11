@@ -32,14 +32,29 @@ DEFAULT_STATS = [ark.HEALTH, ark.STAMINA, ark.WEIGHT, ark.MELEE]
 SEX_LETTER = {MALE: "M", FEMALE: "F"}
 
 
+# 名前の作り方
+MODE_ALL = "all"        # 選んだステータスを全部並べる   M H47 S24 W37 M26
+MODE_ZEROS = "zeros"    # 0 のステータスだけ並べる        M O0 F0
+MODE_MUTATIONS = "of"   # 変異数と性別だけ (オーバーフロー用)  M 23
+
+MODES = [
+    (MODE_ALL, "ぜんぶ", "選んだステータスを並べる"),
+    (MODE_ZEROS, "ゼロだけ", "0 になっているステータスだけ並べる"),
+    (MODE_MUTATIONS, "OF (変異数)", "性別と変異カウンタだけ"),
+]
+
+NO_ZERO_TEXT = "0なし"
+
+
 def make_name(creature, stat_list=None, with_sex=True, separator=" ",
-              mutation_mark=""):
+              mutation_mark="", mode=MODE_ALL):
     """個体から名前を作る。
 
     creature      : Creature
     stat_list     : 入れるステータス (省略時は 体力/スタミナ/重量/近接)
     with_sex      : 先頭に M / F を付ける
     mutation_mark : 変異が乗っているステータスに付ける印 (例 "*")
+    mode          : MODE_ALL / MODE_ZEROS / MODE_MUTATIONS
     """
     stat_list = list(stat_list or DEFAULT_STATS)
     parts = []
@@ -47,6 +62,22 @@ def make_name(creature, stat_list=None, with_sex=True, separator=" ",
         letter = SEX_LETTER.get(creature.sex)
         if letter:
             parts.append(letter)
+
+    if mode == MODE_MUTATIONS:
+        # オーバーフロー系統は「何代目か」だけ分かればよい。
+        # 父側・母側の内訳も出す (どちらが 20 未満かで次に掛ける相手が決まる)
+        parts.append("%d" % creature.mutations_total)
+        if creature.mutations_father and creature.mutations_mother:
+            parts.append("(%d/%d)" % (creature.mutations_father,
+                                      creature.mutations_mother))
+        return separator.join(parts)
+
+    if mode == MODE_ZEROS:
+        zeros = ["%s0" % LETTERS[s] for s in stat_list
+                 if s in LETTERS and creature.bl(s) == 0]
+        parts.extend(zeros if zeros else [NO_ZERO_TEXT])
+        return separator.join(parts)
+
     for s in stat_list:
         letter = LETTERS.get(s)
         if letter is None:

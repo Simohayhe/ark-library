@@ -55,40 +55,90 @@ def mutation_probability(a, b):
     return 0.0
 
 
+# ---- 目標の向き --------------------------------------------------------
+#
+# ステータスごとに「高くしたい」か「ゼロにしたい」かを選べる。
+#
+#   MAX … 高いほど良い (体力・近接など)
+#   MIN … 低いほど良い (酸素・食料など。レベル上限に余裕を作る / 変異を乗せる枠を
+#         空ける / 素レベル 1 の "まっさら" な個体を作る、といった狙い)
+#
+# 継承は「**高い方**の親の値を 55%、低い方を 45%」で決まるので、MIN のステータスは
+# 欲しい方 (低い方) が出る確率が 45% になる。ここが MAX と非対称なところ。
+
+MAX = "max"
+MIN = "min"
+
+GOAL_JA = {MAX: "最高", MIN: "ゼロ"}
+
+
+def goals_from(stat_list=None, goals=None):
+    """stat_list (全部 MAX 扱い) か goals をまとめて {stat: MAX/MIN} にする。"""
+    if goals:
+        return {int(s): g for s, g in goals.items() if g in (MAX, MIN)}
+    return {s: MAX for s in (stat_list or BREEDING_STATS)}
+
+
+def better(goal, a, b):
+    """a の方が目標に近いか。"""
+    return a > b if goal == MAX else a < b
+
+
+def best_of(goal, values):
+    return max(values) if goal == MAX else min(values)
+
+
+def probability_of(goal):
+    """目標側の値を子が受け継ぐ確率。高い方が欲しいなら 55%、低い方なら 45%。"""
+    return P_HIGHER if goal == MAX else P_LOWER
+
+
 # ---- 目標ステータス ----------------------------------------------------
 
 
-def top_levels(creatures, stat_list=None, include_dead=False):
-    """ステータスごとの最高レベル。戻り値 {stat: level}"""
-    stat_list = stat_list or BREEDING_STATS
+def target_levels(creatures, goals=None, include_dead=False, stat_list=None):
+    """ステータスごとの「今いちばん目標に近いレベル」。戻り値 {stat: level}"""
+    goals = goals_from(stat_list, goals)
     pool = [c for c in creatures if include_dead or c.status != STATUS_DEAD]
     out = {}
-    for s in stat_list:
+    for s, goal in goals.items():
         levels = [c.bl(s) for c in pool]
         if levels:
-            out[s] = max(levels)
+            out[s] = best_of(goal, levels)
     return out
 
 
-def holders(creatures, tops, include_dead=False):
-    """最高レベルを持っている個体。戻り値 {stat: [Creature, ...]}"""
+def top_levels(creatures, stat_list=None, include_dead=False, goals=None):
+    """target_levels の別名 (全部 MAX のときの呼び名)。"""
+    return target_levels(creatures, goals, include_dead, stat_list)
+
+
+def holders(creatures, targets, include_dead=False):
+    """目標値を持っている個体。戻り値 {stat: [Creature, ...]}"""
     pool = [c for c in creatures if include_dead or c.status != STATUS_DEAD]
-    return {s: [c for c in pool if c.bl(s) == lv] for s, lv in tops.items()}
+    return {s: [c for c in pool if c.bl(s) == lv] for s, lv in targets.items()}
 
 
-def covered_stats(creature, tops):
-    """この個体が持っている最高ステータスの集合。"""
-    return frozenset(s for s, lv in tops.items() if creature.bl(s) >= lv)
+def covered_stats(creature, targets, goals=None):
+    """この個体が目標に届いているステータスの集合。"""
+    goals = goals or {s: MAX for s in targets}
+    out = []
+    for s, lv in targets.items():
+        mine = creature.bl(s)
+        if mine == lv or better(goals.get(s, MAX), mine, lv):
+            out.append(s)
+    return frozenset(out)
 
 
-def minimal_cover(creatures, tops, breedable_only=True):
-    """全ての最高ステータスを網羅する、なるべく少ない個体の組み合わせ。
+def minimal_cover(creatures, targets, breedable_only=True, goals=None):
+    """全ての目標を網羅する、なるべく少ない個体の組み合わせ。
 
-    貪欲法。同じカバー数なら、レベル合計が高く・変異が少ない個体を優先する。
+    貪欲法。同じカバー数なら、目標に近い個体・変異が少ない個体を優先する。
     """
+    goals = goals or {s: MAX for s in targets}
     pool = [c for c in creatures
             if (not breedable_only or c.can_breed()) and c.status != STATUS_DEAD]
-    need = set(tops)
+    need = set(targets)
     chosen = []
     while need:
         best = None
@@ -96,18 +146,19 @@ def minimal_cover(creatures, tops, breedable_only=True):
         for c in pool:
             if c in chosen:
                 continue
-            gain = covered_stats(c, tops) & need
+            gain = covered_stats(c, targets, goals) & need
             if not gain:
                 continue
-            key = (len(gain),
-                   sum(c.bl(s) for s in tops),
-                   -c.mutations_total)
+            # MAX のステは高いほど、MIN のステは低いほど良いので符号を変えて足す
+            closeness = sum(c.bl(s) if goals.get(s, MAX) == MAX else -c.bl(s)
+                            for s in targets)
+            key = (len(gain), closeness, -c.mutations_total)
             if best_key is None or key > best_key:
                 best, best_key = c, key
         if best is None:
             break                       # 届かないステータスが残っている
         chosen.append(best)
-        need -= covered_stats(best, tops)
+        need -= covered_stats(best, targets, goals)
     return chosen, need
 
 
@@ -117,43 +168,64 @@ def minimal_cover(creatures, tops, breedable_only=True):
 class PairPlan(object):
     """1 組のペアの評価結果。"""
 
-    def __init__(self, male, female, tops, stat_list=None):
+    def __init__(self, male, female, tops, stat_list=None, goals=None):
         self.male = male
         self.female = female
         self.tops = dict(tops or {})
-        self.stat_list = list(stat_list or BREEDING_STATS)
+        if goals or stat_list:
+            self.goals = goals_from(stat_list, goals)
+        elif self.tops:
+            self.goals = {s: MAX for s in self.tops}
+        else:
+            self.goals = goals_from(None, None)
+        self.stat_list = list(self.goals)
 
         self.best_child = {}      # stat: 最良の場合に子が持つレベル
         self.expected = {}        # stat: 期待レベル
         self.differing = []       # 両親で値が違うステータス
         for s in self.stat_list:
+            goal = self.goals.get(s, MAX)
             hi = max(male.bl(s), female.bl(s))
             lo = min(male.bl(s), female.bl(s))
-            self.best_child[s] = hi
+            # 欲しいのは MAX なら高い方、MIN なら低い方
+            self.best_child[s] = hi if goal == MAX else lo
             self.expected[s] = P_HIGHER * hi + P_LOWER * lo
             if hi != lo:
                 self.differing.append(s)
 
-        # 最良の子になるために「高い方の親から貰わないといけない」ステータス。
+        # 最良の子になるために「狙った側の親から貰わないといけない」ステータス。
         # 両親の値が同じステータスは放っておいても確定するので数えない。
         self.needed = list(self.differing)
-        # そのうち、ライブラリの最高値に届くもの (表示の補足に使う)
+        # そのうち、ライブラリの目標値に届くもの (表示の補足に使う)
         self.needed_for_top = [s for s in self.differing
-                               if self.tops.get(s) is not None
-                               and self.best_child[s] >= self.tops[s]]
+                               if self.tops.get(s) is not None and self._reaches(s)]
 
         self.mutation_probability = mutation_probability(male, female)
+
+    def _reaches(self, s):
+        """最良の場合、このステータスは目標値に届くか。"""
+        target = self.tops.get(s)
+        if target is None:
+            return False
+        mine = self.best_child.get(s, 0)
+        return mine == target or better(self.goals.get(s, MAX), mine, target)
+
+    def _product(self, stats_):
+        p = 1.0
+        for s in stats_:
+            p *= probability_of(self.goals.get(s, MAX))
+        return p
 
     # ---- 確率 ----------------------------------------------------------
 
     @property
     def probability(self):
-        """最良の子 (食い違うステータスを全部高い方から貰う) が出る確率。
+        """最良の子 (食い違うステータスを全部狙った側から貰う) が出る確率。
 
-        ステータスごとに独立なので 0.55 の n 乗。両親が同じ値しか持って
-        いなければ何を引いても同じなので 1.0。
+        ステータスごとに独立。高い方が欲しいステは 55%、ゼロを狙うステは 45%
+        なので、両方が混ざると単純な 0.55 の n 乗にはならない。
         """
-        return P_HIGHER ** len(self.needed) if self.needed else 1.0
+        return self._product(self.needed) if self.needed else 1.0
 
     @property
     def eggs_needed(self):
@@ -163,12 +235,12 @@ class PairPlan(object):
 
     @property
     def top_probability(self):
-        """**最高値だけ**を高い方の親から貰える確率。
+        """**目標値に関わるステータスだけ**を狙った側から貰える確率。
 
-        プランの途中では、最高値に届かないステータスがどちらから来ようと
+        プランの途中では、目標に届かないステータスがどちらから来ようと
         あとの世代で上書きされる。そこを数えないぶん現実的な数字になる。
         """
-        return P_HIGHER ** len(self.needed_for_top) if self.needed_for_top else 1.0
+        return self._product(self.needed_for_top) if self.needed_for_top else 1.0
 
     @property
     def top_eggs_needed(self):
@@ -177,9 +249,8 @@ class PairPlan(object):
 
     @property
     def top_count(self):
-        """最良の場合に子が持つ「ライブラリ最高値」の数。"""
-        return sum(1 for s, lv in self.tops.items()
-                   if self.best_child.get(s, 0) >= lv)
+        """最良の場合に子が満たす「目標」の数。"""
+        return sum(1 for s in self.tops if self._reaches(s))
 
     @property
     def best_child_level(self):
@@ -191,15 +262,22 @@ class PairPlan(object):
         return 1 + sum(self.expected.values())
 
     def score(self, weights=None):
-        """並べ替え用の点数。最高ステを何個集められるかを最優先にする。"""
+        """並べ替え用の点数。目標を何個満たせるかを最優先にする。
+
+        期待レベルは MAX のステは高いほど、MIN のステは低いほど良いので、
+        符号を変えて足す。
+        """
         w = weights or {}
-        weighted = sum(self.expected[s] * w.get(s, 1.0) for s in self.stat_list)
+        weighted = 0.0
+        for s in self.stat_list:
+            v = self.expected[s] * w.get(s, 1.0)
+            weighted += v if self.goals.get(s, MAX) == MAX else -v
         return (self.top_count, weighted, self.probability)
 
     def describe(self, species=None):
         name = (lambda s: species.stat_name(s)) if species else (lambda s: ark.NAMES_JA[s])
         parts = ["%s ♂ × %s ♀" % (self.male.display_name, self.female.display_name)]
-        parts.append("  最高ステ %d/%d、最良の子 Lv%d (期待 Lv%.1f)"
+        parts.append("  目標達成 %d/%d、最良の子 Lv%d (期待 Lv%.1f)"
                      % (self.top_count, len(self.tops), self.best_child_level,
                         self.expected_level))
         if self.needed:
@@ -233,11 +311,12 @@ def can_mate(a, b, species_db=None):
 
 
 def rank_pairs(creatures, stat_list=None, weights=None, tops=None,
-               species_db=None, limit=30, require_top=0):
+               species_db=None, limit=30, require_top=0, goals=None):
     """全ペアを評価して良い順に返す。"""
-    stat_list = list(stat_list or BREEDING_STATS)
+    goals = goals_from(stat_list, goals)
+    stat_list = list(goals)
     pool = [c for c in creatures if c.can_breed() and c.status != STATUS_DEAD]
-    tops = tops if tops is not None else top_levels(pool, stat_list)
+    tops = tops if tops is not None else target_levels(pool, goals)
 
     males = [c for c in pool if c.sex == MALE]
     females = [c for c in pool if c.sex == FEMALE]
@@ -246,7 +325,7 @@ def rank_pairs(creatures, stat_list=None, weights=None, tops=None,
         for f in females:
             if not can_mate(m, f, species_db):
                 continue
-            p = PairPlan(m, f, tops, stat_list)
+            p = PairPlan(m, f, tops, goals=goals)
             if p.top_count < require_top:
                 continue
             plans.append(p)
@@ -297,8 +376,8 @@ class _Virtual(Creature):
 
 
 def plan_to_best(creatures, stat_list=None, species_db=None, max_generations=8,
-                 breedable_only=True):
-    """最高ステータスを 1 匹に集めるまでの手順を組む。
+                 breedable_only=True, goals=None):
+    """目標のステータスを 1 匹に集めるまでの手順を組む。
 
     戻り値 dict:
         tops        {stat: level}   目標
@@ -309,12 +388,13 @@ def plan_to_best(creatures, stat_list=None, species_db=None, max_generations=8,
         total_eggs  float           各手の平均必要数の合計 (目安)
         final       Creature        最終的に出来る個体 (仮想)
     """
-    stat_list = list(stat_list or BREEDING_STATS)
+    goals = goals_from(stat_list, goals)
+    stat_list = list(goals)
     pool = [c for c in creatures if c.status != STATUS_DEAD]
     if breedable_only:
         pool = [c for c in pool if c.can_breed()]
-    tops = top_levels(pool, stat_list)
-    cover, missing = minimal_cover(pool, tops, breedable_only)
+    tops = target_levels(pool, goals)
+    cover, missing = minimal_cover(pool, tops, breedable_only, goals)
 
     species_bp = cover[0].species_bp if cover else ""
     species_name = cover[0].species_name if cover else ""
@@ -328,13 +408,13 @@ def plan_to_best(creatures, stat_list=None, species_db=None, max_generations=8,
         nxt = []
         used = [False] * len(current)
         # カバー範囲が補い合うペアから順に組む
-        order = _pairing_order(current, tops, stat_list, species_db)
+        order = _pairing_order(current, tops, stat_list, species_db, goals)
         for i, j in order:
             if used[i] or used[j]:
                 continue
             a, b = current[i], current[j]
             m, f = _as_male_female(a, b)
-            pair = PairPlan(m, f, tops, stat_list)
+            pair = PairPlan(m, f, tops, goals=goals)
             child_levels = dict(pair.best_child)
             label = "第%d世代の子%d" % (generation, len(nxt) + 1)
             child = _Virtual(a.species_bp or species_bp,
@@ -354,6 +434,7 @@ def plan_to_best(creatures, stat_list=None, species_db=None, max_generations=8,
     total_eggs = sum(st.eggs_needed for st in steps if st.eggs_needed < 1e6)
     return {
         "tops": tops,
+        "goals": goals,
         "cover": cover,
         "missing": missing,
         "steps": steps,
@@ -365,15 +446,15 @@ def plan_to_best(creatures, stat_list=None, species_db=None, max_generations=8,
     }
 
 
-def _pairing_order(pool, tops, stat_list, species_db):
+def _pairing_order(pool, tops, stat_list, species_db, goals=None):
     """組む順番。お互いの足りないところを埋め合うペアを先に。"""
     scored = []
     n = len(pool)
     for i in range(n):
         for j in range(i + 1, n):
             a, b = pool[i], pool[j]
-            ca = covered_stats(a, tops)
-            cb = covered_stats(b, tops)
+            ca = covered_stats(a, tops, goals)
+            cb = covered_stats(b, tops, goals)
             union = ca | cb
             overlap = len(ca & cb)
             diff = sum(1 for s in stat_list if a.bl(s) != b.bl(s))
@@ -392,22 +473,24 @@ def _as_male_female(a, b):
 # ---- 変異狙い ----------------------------------------------------------
 
 
-def mutation_pairs(creatures, stat_list=None, tops=None, species_db=None, limit=10):
+def mutation_pairs(creatures, stat_list=None, tops=None, species_db=None,
+                   limit=10, goals=None):
     """変異を狙うのに向いたペア。
 
     理想は「片方が完成個体 (最高ステを全部持っている)」かつ「両親の変異
     カウンタが 20 未満」。完成個体同士なら食い違いがないので、生まれた子が
     親より高ければそれが変異と分かる。
     """
-    stat_list = list(stat_list or BREEDING_STATS)
+    goals = goals_from(stat_list, goals)
+    stat_list = list(goals)
     pool = [c for c in creatures if c.can_breed() and c.status != STATUS_DEAD]
-    tops = tops if tops is not None else top_levels(pool, stat_list)
+    tops = tops if tops is not None else target_levels(pool, goals)
     out = []
     for m in [c for c in pool if c.sex == MALE]:
         for f in [c for c in pool if c.sex == FEMALE]:
             if not can_mate(m, f, species_db):
                 continue
-            p = PairPlan(m, f, tops, stat_list)
+            p = PairPlan(m, f, tops, goals=goals)
             if p.mutation_probability <= 0:
                 continue
             out.append(p)
@@ -469,14 +552,15 @@ def infer_mutations(child_breeding_levels, mother, father, stat_list=None):
 # ---- サマリ ------------------------------------------------------------
 
 
-def library_summary(creatures, stat_list=None):
+def library_summary(creatures, stat_list=None, goals=None):
     """種族ごとの到達状況。ライブラリ画面の見出し用。"""
-    stat_list = list(stat_list or BREEDING_STATS)
+    goals = goals_from(stat_list, goals)
+    stat_list = list(goals)
     pool = [c for c in creatures if c.status != STATUS_DEAD]
-    tops = top_levels(pool, stat_list)
+    tops = target_levels(pool, goals)
     best_possible = 1 + sum(tops.values())
     have_all = [c for c in pool
-                if all(c.bl(s) >= lv for s, lv in tops.items())]
+                if len(covered_stats(c, tops, goals)) == len(tops)]
     return {
         "count": len(pool),
         "males": sum(1 for c in pool if c.sex == MALE),
@@ -493,3 +577,102 @@ def generations_needed(holder_count):
     if holder_count <= 1:
         return 0
     return int(math.ceil(math.log(holder_count, 2)))
+
+
+# ---- 色の交配 ----------------------------------------------------------
+#
+# 色は領域ごとに独立して、**どちらかの親の色をそのまま**受け継ぐ。
+# 混ざらないし、中間色も出ない。ふつうは 50% ずつとされているので、ここでも
+# 半々として数える (ステータスの 55/45 とは別の話)。
+# 色変異が起きるとその領域だけ別の色に化けるが、確率が低いので数えていない。
+
+P_COLOR = 0.5
+
+
+def color_inventory(creatures, region_indices, include_dead=False):
+    """領域ごとに「どの色を、どの個体が持っているか」。
+
+    戻り値 {領域番号: {色ID: [Creature, ...]}}
+    """
+    pool = [c for c in creatures if include_dead or c.status != STATUS_DEAD]
+    out = {}
+    for i in region_indices:
+        got = {}
+        for c in pool:
+            cid = c.colors[i] if i < len(c.colors) else 0
+            if not cid:
+                continue
+            got.setdefault(cid, []).append(c)
+        out[i] = got
+    return out
+
+
+class ColorPair(object):
+    """色を狙うときのペアの評価。targets は {領域番号: 色ID}。"""
+
+    def __init__(self, male, female, targets):
+        self.male = male
+        self.female = female
+        self.targets = dict(targets or {})
+        self.per_region = {}      # 領域 -> 'both' / 'one' / 'none'
+        for i, want in self.targets.items():
+            m = male.colors[i] if i < len(male.colors) else 0
+            f = female.colors[i] if i < len(female.colors) else 0
+            if m == want and f == want:
+                self.per_region[i] = "both"
+            elif m == want or f == want:
+                self.per_region[i] = "one"
+            else:
+                self.per_region[i] = "none"
+
+    @property
+    def possible(self):
+        """そもそもその色が出せるペアか。"""
+        return "none" not in self.per_region.values()
+
+    @property
+    def probability(self):
+        if not self.possible:
+            return 0.0
+        p = 1.0
+        for state in self.per_region.values():
+            if state == "one":
+                p *= P_COLOR
+        return p
+
+    @property
+    def eggs_needed(self):
+        p = self.probability
+        return 1.0 / p if p > 0 else float("inf")
+
+    @property
+    def sure_regions(self):
+        return [i for i, st in self.per_region.items() if st == "both"]
+
+    @property
+    def risky_regions(self):
+        return [i for i, st in self.per_region.items() if st == "one"]
+
+    @property
+    def missing_regions(self):
+        return [i for i, st in self.per_region.items() if st == "none"]
+
+    def __repr__(self):
+        return "<ColorPair %s x %s p=%.2f>" % (
+            self.male.display_name, self.female.display_name, self.probability)
+
+
+def rank_color_pairs(creatures, targets, species_db=None, limit=40,
+                     include_impossible=False):
+    """狙った色が出しやすいペアを良い順に返す。"""
+    pool = [c for c in creatures if c.can_breed() and c.status != STATUS_DEAD]
+    out = []
+    for m in [c for c in pool if c.sex == MALE]:
+        for f in [c for c in pool if c.sex == FEMALE]:
+            if not can_mate(m, f, species_db):
+                continue
+            cp = ColorPair(m, f, targets)
+            if cp.possible or include_impossible:
+                out.append(cp)
+    out.sort(key=lambda p: (p.probability, -len(p.risky_regions)), reverse=True)
+    return out[:limit] if limit else out

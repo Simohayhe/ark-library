@@ -83,6 +83,23 @@ class AlertsPage(tk.Frame):
         card2.pack(fill="x", pady=(8, 0))
         b2 = card2.body
         _head(b2, "名前 (ゲームに貼り付ける用)")
+
+        mrow0 = tk.Frame(b2, bg=theme.CARD)
+        mrow0.pack(fill="x", pady=(0, 4))
+        tk.Label(mrow0, text="作り方", bg=theme.CARD, fg=theme.INK_SUB,
+                 font=theme.F.get("small")).pack(side="left", padx=(0, 6))
+        self.name_mode = tk.StringVar()
+        self._mode_labels = [label for _k, label, _h in naming.MODES]
+        self._mode_keys = [k for k, _l, _h in naming.MODES]
+        cb = ttk.Combobox(mrow0, textvariable=self.name_mode, width=14,
+                          state="readonly", style="Cute.TCombobox",
+                          values=self._mode_labels)
+        cb.pack(side="left")
+        cb.bind("<<ComboboxSelected>>", lambda _e: self._save_naming())
+        self.mode_hint = tk.Label(mrow0, text="", bg=theme.CARD, fg=theme.INK_SUB,
+                                  font=theme.F.get("small"))
+        self.mode_hint.pack(side="left", padx=8)
+
         self.name_copy = tk.BooleanVar()
         _check(b2, "作った名前をクリップボードにコピーする", self.name_copy,
                self._save_naming)
@@ -228,6 +245,9 @@ class AlertsPage(tk.Frame):
         self.name_sex.set(bool(a.get("naming_with_sex")))
         self.name_fill.set(bool(a.get("naming_fill_empty")))
         self.name_mark.set(a.get("naming_mutation_mark") or "")
+        mode = a.get("naming_mode") or naming.MODE_ALL
+        if mode in self._mode_keys:
+            self.name_mode.set(self._mode_labels[self._mode_keys.index(mode)])
         chosen = a.naming_stats()
         for s, var in self.name_stats.items():
             var.set(s in chosen)
@@ -269,6 +289,12 @@ class AlertsPage(tk.Frame):
         a.set("naming_with_sex", bool(self.name_sex.get()))
         a.set("naming_fill_empty", bool(self.name_fill.get()))
         a.set("naming_mutation_mark", self.name_mark.get()[:2])
+        label = self.name_mode.get()
+        if label in self._mode_labels:
+            key = self._mode_keys[self._mode_labels.index(label)]
+            a.set("naming_mode", key)
+            self.mode_hint.configure(
+                text=dict((k, h) for k, _l, h in naming.MODES).get(key, ""))
         a.set("naming_stats", [s for s in NAMING_ORDER
                                if self.name_stats[s].get()])
         self._refresh_preview()
@@ -316,9 +342,13 @@ class AlertsPage(tk.Frame):
     def _refresh_preview(self):
         cr = _sample_creature()
         stat_list = [s for s in NAMING_ORDER if self.name_stats[s].get()]
+        label = self.name_mode.get()
+        mode = (self._mode_keys[self._mode_labels.index(label)]
+                if label in self._mode_labels else naming.MODE_ALL)
         text = naming.make_name(cr, stat_list or naming.DEFAULT_STATS,
                                 bool(self.name_sex.get()),
-                                mutation_mark=self.name_mark.get()[:2])
+                                mutation_mark=self.name_mark.get()[:2],
+                                mode=mode)
         self.name_preview.configure(text="こうなります:  " + (text or "(何も入れない)"))
 
     def _preview_overlay(self):
@@ -340,11 +370,14 @@ class AlertsPage(tk.Frame):
 
 
 def _sample_creature():
+    """見本の個体。ゼロ狙いと OF の見え方も分かるように、酸素と食料は 0。"""
     cr = Creature(species_name="Rex", sex=MALE, state="bred", level=302)
-    for s, lv in ((ark.HEALTH, 47), (ark.STAMINA, 24), (ark.OXYGEN, 18),
-                  (ark.FOOD, 22), (ark.WEIGHT, 37), (ark.MELEE, 26)):
+    for s, lv in ((ark.HEALTH, 47), (ark.STAMINA, 24), (ark.OXYGEN, 0),
+                  (ark.FOOD, 0), (ark.WEIGHT, 37), (ark.MELEE, 26)):
         cr.levels_wild[s] = lv
     cr.levels_mut[ark.MELEE] = 4
+    cr.mutations_father = 20
+    cr.mutations_mother = 3
     return cr
 
 

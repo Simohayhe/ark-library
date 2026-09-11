@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from arklib import ark, breeding
+from arklib import colors as arkcolors
 from arklib.creature import MUTATION_LIMIT
 
 from . import theme
@@ -17,7 +18,14 @@ from .page_library import SHORT_JA, stat_columns
 from .table import Col, Table
 
 TABS = [("pairs", "おすすめペア"), ("plan", "仕上げの手順"),
-        ("mutation", "変異狙い")]
+        ("mutation", "変異狙い"), ("color", "色")]
+
+# 狙い方のプリセット。ステータスごとに 最高(MAX) / ゼロ(MIN) / 無視(None)
+PRESETS = [
+    ("最高ステ狙い", "all_max"),
+    ("実用型 (酸素・食料をゼロ)", "practical"),
+    ("Lv1個体 (全ステゼロ)", "level1"),
+]
 
 
 class PlanPage(tk.Frame):
@@ -75,6 +83,9 @@ class PlanPage(tk.Frame):
         self.plan_holder = tk.Frame(self.content, bg=theme.BG)
         self.mut_holder = tk.Frame(self.content, bg=theme.CARD)
         self.mut_table = None
+        self.color_holder = tk.Frame(self.content, bg=theme.BG)
+        self.color_table = None
+        self.color_targets = {}      # 領域番号 -> 狙う色 ID
 
         self.plan_text = tk.Text(self.plan_holder, bg=theme.CARD, fg=theme.INK,
                                  bd=0, highlightthickness=0, wrap="word",
@@ -101,8 +112,11 @@ class PlanPage(tk.Frame):
             b.set_active(k == key)
         for f in (self.pair_holder, self.plan_holder, self.mut_holder):
             f.pack_forget()
+        for f in (self.color_holder,):
+            f.pack_forget()
         {"pairs": self.pair_holder, "plan": self.plan_holder,
-         "mutation": self.mut_holder}[key].pack(fill="both", expand=True)
+         "mutation": self.mut_holder,
+         "color": self.color_holder}[key].pack(fill="both", expand=True)
 
     # ---- データ --------------------------------------------------------
 
@@ -145,40 +159,85 @@ class PlanPage(tk.Frame):
     def _build_stat_bar(self):
         for w in self.stat_bar.winfo_children():
             w.destroy()
-        tk.Label(self.stat_bar, text="狙うステータス", bg=theme.BG,
-                 fg=theme.INK_SUB, font=theme.F.get("small")).pack(side="left",
-                                                                   padx=(0, 8))
+        tk.Label(self.stat_bar, text="狙い", bg=theme.BG, fg=theme.INK_SUB,
+                 font=theme.F.get("small")).pack(side="left", padx=(0, 6))
         if self.species is None:
             return
-        all_stats = stat_columns(self.species)
-        # 既定は体力 / スタミナ / 重量 / 近接。酸素・食料は交配で重視しないことが多い
-        default_on = {ark.HEALTH, ark.STAMINA, ark.WEIGHT, ark.MELEE}
-        saved = self.st.library.get_setting("plan_stats_%s" % self.species_bp, None)
-        self.stat_vars = {}
-        for s in all_stats:
-            on = (s in saved) if saved is not None else (s in default_on)
-            v = tk.BooleanVar(value=bool(on))
-            self.stat_vars[s] = v
-            tk.Checkbutton(self.stat_bar, text=SHORT_JA.get(s, ark.NAMES_JA[s]),
-                           variable=v, command=self._save_stats,
-                           bg=theme.BG, fg=theme.INK, selectcolor=theme.FIELD,
-                           activebackground=theme.BG, activeforeground=theme.INK,
-                           font=theme.F.get("small"), bd=0,
-                           highlightthickness=0).pack(side="left")
 
-    def _save_stats(self):
-        self.st.library.set_setting("plan_stats_%s" % self.species_bp,
-                                    [s for s, v in self.stat_vars.items() if v.get()])
+        self.goal_chips = {}
+        for s in stat_columns(self.species):
+            chip = _GoalChip(self.stat_bar, SHORT_JA.get(s, ark.NAMES_JA[s]),
+                             lambda _s=s: self._on_goal_changed())
+            chip.pack(side="left", padx=(0, 4))
+            self.goal_chips[s] = chip
+
+        tk.Label(self.stat_bar, text="まとめて:", bg=theme.BG, fg=theme.INK_SUB,
+                 font=theme.F.get("small")).pack(side="left", padx=(12, 4))
+        self.preset_var = tk.StringVar()
+        box = ttk.Combobox(self.stat_bar, textvariable=self.preset_var, width=22,
+                           state="readonly", style="Cute.TCombobox",
+                           values=[label for label, _k in PRESETS])
+        box.pack(side="left")
+        box.bind("<<ComboboxSelected>>", lambda _e: self._apply_preset())
+
+        self._load_goals()
+
+    # ---- 狙い方の読み書き ----------------------------------------------
+
+    def _load_goals(self):
+        """保存してある狙い方を chips に流し込む。古い設定からも拾う。"""
+        saved = self.st.library.get_setting("plan_goals_%s" % self.species_bp, None)
+        if saved is None:
+            # 昔の「入れるステータスのチェック」からの引き継ぎ
+            old_list = self.st.library.get_setting(
+                "plan_stats_%s" % self.species_bp, None)
+            if old_list is None:
+                old_list = [ark.HEALTH, ark.STAMINA, ark.WEIGHT, ark.MELEE]
+            saved = {str(s): breeding.MAX for s in old_list}
+        for s, chip in self.goal_chips.items():
+            chip.set_goal(saved.get(str(s)) or saved.get(s) or "")
+
+    def _save_goals(self):
+        self.st.library.set_setting(
+            "plan_goals_%s" % self.species_bp,
+            {str(s): c.goal for s, c in self.goal_chips.items() if c.goal})
+
+    def _on_goal_changed(self):
+        self.preset_var.set("")
+        self._save_goals()
         self.recalc()
 
+    def _apply_preset(self):
+        label = self.preset_var.get()
+        key = dict((l, k) for l, k in PRESETS).get(label)
+        if not key:
+            return
+        for s, chip in self.goal_chips.items():
+            if key == "all_max":
+                chip.set_goal(breeding.MAX)
+            elif key == "level1":
+                chip.set_goal(breeding.MIN)
+            else:       # practical
+                chip.set_goal(breeding.MIN if s in (ark.OXYGEN, ark.FOOD)
+                              else breeding.MAX)
+        self._save_goals()
+        self.recalc()
+
+    def _goals(self):
+        got = {s: c.goal for s, c in self.goal_chips.items() if c.goal}
+        if not got:
+            got = {s: breeding.MAX for s in self.goal_chips}
+        return got
+
     def _stat_list(self):
-        out = [s for s, v in self.stat_vars.items() if v.get()]
-        return out or list(self.stat_vars.keys())
+        return list(self._goals())
 
     def _clear(self):
         for w in self.pair_holder.winfo_children():
             w.destroy()
         for w in self.mut_holder.winfo_children():
+            w.destroy()
+        for w in self.color_holder.winfo_children():
             w.destroy()
         self._write_plan([])
 
@@ -188,16 +247,20 @@ class PlanPage(tk.Frame):
         if self.species is None or not getattr(self, "creatures", None):
             self._clear()
             return
-        stat_list = self._stat_list()
+        goals = self._goals()
+        self.goals = goals
+        stat_list = list(goals)
         pool = [c for c in self.creatures if c.can_breed()]
-        tops = breeding.top_levels(pool, stat_list)
+        tops = breeding.target_levels(pool, goals)
         self.tops = tops
 
-        info = breeding.library_summary(pool, stat_list)
-        tops_text = " ".join("%s%d" % (SHORT_JA.get(s, ark.NAMES_JA[s]), lv)
-                             for s, lv in sorted(tops.items()))
+        info = breeding.library_summary(pool, goals=goals)
+        tops_text = " ".join(
+            "%s%d%s" % (SHORT_JA.get(s, ark.NAMES_JA[s]), lv,
+                        "↓" if goals.get(s) == breeding.MIN else "")
+            for s, lv in sorted(tops.items()))
         done = info["complete"]
-        goal = ("目標 (ライブラリの最高値): %s → 全部そろえば 素Lv%d"
+        goal = ("目標 (いまライブラリにある一番いい値): %s → 全部そろえば 素Lv%d"
                 % (tops_text, info["best_possible_level"]))
         if done:
             goal += "   ★もう揃っている個体: " + "、".join(
@@ -207,6 +270,7 @@ class PlanPage(tk.Frame):
         self._fill_pairs(pool, stat_list, tops)
         self._fill_plan(pool, stat_list, tops, done)
         self._fill_mutation(pool, stat_list, tops)
+        self._fill_color()
 
     # ---- おすすめペア --------------------------------------------------
 
@@ -228,7 +292,7 @@ class PlanPage(tk.Frame):
                                     min_rows=10, cell_style=self._pair_cell)
             self.pair_table.pack(fill="both", expand=True)
 
-        plans = breeding.rank_pairs(pool, stat_list, tops=tops,
+        plans = breeding.rank_pairs(pool, tops=tops, goals=self.goals,
                                     species_db=self.st.species_db, limit=60)
         rows = []
         for p in plans:
@@ -277,14 +341,14 @@ class PlanPage(tk.Frame):
                                  "「変異狙い」を見てください。"))
             lines.append(("", ""))
 
-        plan = breeding.plan_to_best(pool, stat_list,
+        plan = breeding.plan_to_best(pool, goals=self.goals,
                                      species_db=self.st.species_db)
         cover = plan["cover"]
         missing = plan["missing"]
 
         lines.append(("h", "合わせるべき個体 (%d 体)" % len(cover)))
         for c in cover:
-            have = [name(s) for s, lv in tops.items() if c.bl(s) >= lv]
+            have = [name(s) for s in breeding.covered_stats(c, tops, self.goals)]
             lines.append(("step", "  %s %s  素Lv%d"
                           % (c.sex_ja, c.display_name, c.base_level())))
             lines.append(("sub", "      最高値を持っているステータス: %s"
@@ -339,6 +403,113 @@ class PlanPage(tk.Frame):
             self.plan_text.insert("end", text + "\n", tag)
         self.plan_text.configure(state="disabled")
 
+    # ---- 色 ------------------------------------------------------------
+
+    def _fill_color(self):
+        for w in self.color_holder.winfo_children():
+            w.destroy()
+        if self.species is None:
+            return
+        bp = self.species_bp
+        regions = arkcolors.used_regions(bp) if arkcolors.available() else []
+        if not regions:
+            tk.Label(self.color_holder,
+                     text="この種族の色データがありません。",
+                     bg=theme.BG, fg=theme.INK_SUB,
+                     font=theme.F.get("ui")).pack(anchor="w", padx=16, pady=12)
+            return
+
+        pool = [c for c in self.creatures if c.can_breed()]
+        inv = breeding.color_inventory(pool, regions)
+
+        head = tk.Frame(self.color_holder, bg=theme.BG)
+        head.pack(fill="x")
+        tk.Label(head, text="狙う色を選ぶ (領域ごと)", bg=theme.BG, fg=theme.INK,
+                 font=theme.F.get("cute_b")).pack(side="left")
+        tk.Label(head, text="色は領域ごとに、どちらかの親のものをそのまま受け継ぐ "
+                           "(半々)。混ざらない。",
+                 bg=theme.BG, fg=theme.INK_SUB,
+                 font=theme.F.get("small")).pack(side="left", padx=10)
+        theme.RoundButton(head, "選び直す", self._clear_color_targets, kind="ghost",
+                          bg=theme.BG).pack(side="right")
+
+        picker = tk.Frame(self.color_holder, bg=theme.BG)
+        picker.pack(fill="x", pady=(6, 8))
+        for n, i in enumerate(regions):
+            # 領域は最大 6 つ。横一列だと入りきらないので 3 つずつ折り返す
+            box = tk.Frame(picker, bg=theme.CARD)
+            box.grid(row=n // 3, column=n % 3, padx=(0, 10), pady=2, sticky="nw")
+            tk.Label(box, text=arkcolors.region_name(bp, i), bg=theme.CARD,
+                     fg=theme.INK_SUB, font=theme.F.get("small")).pack(anchor="w",
+                                                                       padx=8,
+                                                                       pady=(6, 2))
+            have = inv.get(i) or {}
+            if not have:
+                tk.Label(box, text="(この領域の色を持つ個体がいない)", bg=theme.CARD,
+                         fg=theme.INK_SUB,
+                         font=theme.F.get("small")).pack(anchor="w", padx=8,
+                                                          pady=(0, 6))
+                continue
+            row = tk.Frame(box, bg=theme.CARD)
+            row.pack(anchor="w", padx=6, pady=(0, 6))
+            # 色見本も 4 つずつ折り返す (横に長い種族があるため)
+            for n, (cid, owners) in enumerate(
+                    sorted(have.items(), key=lambda kv: -len(kv[1]))[:12]):
+                sw = _ColorSwatch(row, cid, len(owners),
+                                  selected=self.color_targets.get(i) == cid,
+                                  command=lambda r=i, c=cid: self._pick_color(r, c))
+                sw.grid(row=n // 4, column=n % 4, padx=2, pady=2)
+
+        if self.color_table is None or not self.color_table.winfo_exists():
+            cols = [Col("male", "♂ オス", 150), Col("female", "♀ メス", 150),
+                    Col("prob", "出る確率", 78, align="e",
+                        sort_key=lambda r: r.get("_prob", 0)),
+                    Col("eggs", "平均何匹", 78, align="e",
+                        sort_key=lambda r: -r.get("_eggs", 0)),
+                    Col("sure", "確定している領域", 170),
+                    Col("risky", "五分五分の領域", 170)]
+            self.color_table = Table(self.color_holder, cols, bg=theme.CARD,
+                                     min_rows=8)
+        self.color_table.pack(fill="both", expand=True)
+
+        targets = {i: c for i, c in self.color_targets.items() if c}
+        if not targets:
+            self.color_table.set_rows([{
+                "male": "↑ 上の色見本を押して、狙う色を選んでください",
+                "female": "", "prob": "", "eggs": "", "sure": "", "risky": "",
+            }], keep_sort=False)
+            return
+        pairs = breeding.rank_color_pairs(pool, targets,
+                                          species_db=self.st.species_db, limit=40)
+        rows = []
+        for cp in pairs:
+            rows.append({
+                "_obj": cp,
+                "male": cp.male.display_name,
+                "female": cp.female.display_name,
+                "prob": "%.0f%%" % (cp.probability * 100),
+                "eggs": "%.0f 匹" % cp.eggs_needed if cp.eggs_needed < 1e6 else "-",
+                "sure": "・".join(arkcolors.region_name(bp, i)
+                                  for i in cp.sure_regions) or "-",
+                "risky": "・".join(arkcolors.region_name(bp, i)
+                                   for i in cp.risky_regions) or "-",
+                "_prob": cp.probability,
+                "_eggs": cp.eggs_needed,
+            })
+        self.color_table.set_rows(rows, keep_sort=False)
+        self.color_table.sort_by("prob", desc=True)
+
+    def _pick_color(self, region, color_id):
+        if self.color_targets.get(region) == color_id:
+            self.color_targets.pop(region, None)
+        else:
+            self.color_targets[region] = color_id
+        self._fill_color()
+
+    def _clear_color_targets(self):
+        self.color_targets = {}
+        self._fill_color()
+
     # ---- 変異狙い ------------------------------------------------------
 
     def _fill_mutation(self, pool, stat_list, tops):
@@ -354,8 +525,8 @@ class PlanPage(tk.Frame):
                                    min_rows=10)
             self.mut_table.pack(fill="both", expand=True)
 
-        plans = breeding.mutation_pairs(pool, stat_list, tops=tops,
-                                       species_db=self.st.species_db, limit=40)
+        plans = breeding.mutation_pairs(pool, tops=tops, goals=self.goals,
+                                        species_db=self.st.species_db, limit=40)
         rows = []
         for p in plans:
             note = []
@@ -388,6 +559,91 @@ def _who(c):
         # 絵文字は tk.Text のフォントで豆腐になるので記号で代用する
         return "◇ %s" % c.display_name
     return "%s %s" % (c.sex_ja, c.display_name)
+
+
+class _ColorSwatch(tk.Canvas):
+    """色見本。押すと「狙う色」に選ばれる。"""
+
+    W, H = 58, 34
+
+    def __init__(self, master, color_id, count, selected, command):
+        tk.Canvas.__init__(self, master, width=self.W, height=self.H,
+                           bg=theme.CARD, highlightthickness=0, bd=0)
+        self.color_id = color_id
+        self.count = count
+        self.selected = selected
+        self.command = command
+        self.bind("<ButtonRelease-1>", lambda e: command())
+        self.configure(cursor="hand2")
+        self._draw()
+
+    def _draw(self):
+        self.delete("all")
+        fill = arkcolors.hex_of(self.color_id) or theme.BG_SOFT
+        outline = theme.INK if self.selected else theme.LINE
+        theme.round_rect(self, 1, 1, self.W - 1, self.H - 1, 6, fill=fill,
+                         outline=outline, width=3 if self.selected else 1)
+        ink = "#000000" if _bright(fill) else "#FFFFFF"
+        self.create_text(self.W / 2, self.H / 2 - 5, text=str(self.color_id),
+                         fill=ink, font=theme.F.get("small"))
+        self.create_text(self.W / 2, self.H / 2 + 8, text="%d体" % self.count,
+                         fill=ink, font=theme.F.get("small"))
+
+
+def _bright(hex_color):
+    r = int(hex_color[1:3], 16)
+    g = int(hex_color[3:5], 16)
+    b = int(hex_color[5:7], 16)
+    return (r * 299 + g * 587 + b * 114) / 1000.0 > 140
+
+
+class _GoalChip(tk.Canvas):
+    """ステータスの狙い方を 3 段階で切り替えるチップ。
+
+        ↑ = 最高を狙う   ↓ = ゼロを狙う   — = 気にしない
+
+    押すたびに ↑ → ↓ → — と回る。
+    """
+
+    H = 26
+    ORDER = [breeding.MAX, breeding.MIN, ""]
+    MARK = {breeding.MAX: "↑", breeding.MIN: "↓", "": "—"}
+
+    def __init__(self, master, text, on_change):
+        import tkinter.font as tkfont
+        self.font = theme.F.get("small")
+        fo = tkfont.Font(font=self.font)
+        w = fo.measure(text + " ↑") + 20
+        tk.Canvas.__init__(self, master, width=w, height=self.H, bg=theme.BG,
+                           highlightthickness=0, bd=0)
+        self.text = text
+        self.goal = breeding.MAX
+        self.on_change = on_change
+        self.bind("<ButtonRelease-1>", self._click)
+        self.configure(cursor="hand2")
+        self._draw()
+
+    def set_goal(self, goal):
+        self.goal = goal if goal in self.ORDER else ""
+        self._draw()
+
+    def _click(self, _e=None):
+        self.goal = self.ORDER[(self.ORDER.index(self.goal) + 1) % len(self.ORDER)]
+        self._draw()
+        if self.on_change:
+            self.on_change()
+
+    def _draw(self):
+        self.delete("all")
+        w = int(self["width"])
+        fill = {breeding.MAX: theme.PINK, breeding.MIN: theme.SKY,
+                "": theme.BG_SOFT}[self.goal]
+        fg = theme.INK_SUB if not self.goal else theme.ON_ACCENT
+        theme.round_rect(self, 1, 2, w - 1, self.H - 2, min(9, theme.RADIUS),
+                         fill=fill, outline="")
+        self.create_text(w / 2, self.H / 2,
+                         text="%s %s" % (self.text, self.MARK[self.goal]),
+                         fill=fg, font=self.font)
 
 
 class _Tab(tk.Canvas):
