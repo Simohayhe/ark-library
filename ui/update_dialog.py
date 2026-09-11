@@ -2,8 +2,12 @@
 """「更新を確認」ボタンの中身。
 
 GitHub のリリースを見に行って、新しければ更新内容を出し、押されたら
-落として入れ替える。通信と書き込みは別スレッドでやって、画面は
-after() で触る (tkinter は別スレッドから触ると落ちるため)。
+落として入れ替える。
+
+通信は別スレッドでやるが、**tkinter を別スレッドから触ってはいけない**
+(after() を呼ぶだけでも "main thread is not in main loop" で落ちることがある)。
+そこでスレッドは結果を箱に置くだけにして、画面側が after() で定期的に
+覗きに行く形にしている。
 """
 import threading
 import tkinter as tk
@@ -13,11 +17,12 @@ from arklib import updater
 
 from . import theme
 
+POLL_MS = 120
 
-def check_and_offer(parent, current_version, on_busy=None):
+
+def check_and_offer(parent, current_version):
     """更新を確認して、あればダイアログを出す。ボタンから呼ぶ。"""
-    dlg = _UpdateDialog(parent, current_version)
-    return dlg
+    return _UpdateDialog(parent, current_version)
 
 
 class _UpdateDialog(tk.Toplevel):
@@ -29,8 +34,12 @@ class _UpdateDialog(tk.Toplevel):
         self.current = current_version
         self.info = None
         self.asset = None
-        self.downloaded = None
-        self._closing = False
+
+        # スレッドとやりとりする箱。触るのは「置く側」と「取る側」だけ
+        self._lock = threading.Lock()
+        self._result = None          # ("checked", info) / ("downloaded", path) / ("error", text)
+        self._progress = None        # (落とした量, 全体)
+        self._alive = True
 
         self.head = tk.Label(self, text="確認しています…", bg=theme.BG,
                              fg=theme.INK, font=theme.F.get("cute_b"))
@@ -53,25 +62,60 @@ class _UpdateDialog(tk.Toplevel):
         box.pack(padx=20, pady=(6, 16))
         self.ok_btn = theme.RoundButton(box, "更新する", self._do_update,
                                         kind="primary", bg=theme.BG)
-        self.ok_btn.pack(side="left", padx=4)
-        theme.RoundButton(box, "リリースページ", self._open_page, kind="soft",
-                          bg=theme.BG).pack(side="left", padx=4)
+        self._page_btn = theme.RoundButton(box, "リリースページ", self._open_page,
+                                           kind="soft", bg=theme.BG)
+        self._page_btn.pack(side="left", padx=4)
         theme.RoundButton(box, "閉じる", self.destroy, kind="ghost",
                           bg=theme.BG).pack(side="left", padx=4)
-        self.ok_btn.pack_forget()
 
         self.grab_set()
-        threading.Thread(target=self._check_worker, daemon=True).start()
+        self._start(self._check_worker)
+
+    # ---- スレッドと箱 --------------------------------------------------
+
+    def _start(self, worker):
+        threading.Thread(target=worker, daemon=True).start()
+        self.after(POLL_MS, self._poll)
+
+    def _put(self, kind, value):
+        with self._lock:
+            self._result = (kind, value)
+
+    def _take(self):
+        with self._lock:
+            got, self._result = self._result, None
+        return got
+
+    def _poll(self):
+        if not self._alive:
+            return
+        with self._lock:
+            prog = self._progress
+        if prog:
+            got, total = prog
+            if total:
+                self.progress.set(got / float(total))
+        got = self._take()
+        if got is None:
+            self.after(POLL_MS, self._poll)
+            return
+        kind, value = got
+        if kind == "error":
+            self._say("うまくいきませんでした", value)
+        elif kind == "checked":
+            self._checked(value)
+        elif kind == "downloaded":
+            self._apply(value)
 
     # ---- 確認 ----------------------------------------------------------
 
     def _check_worker(self):
-        info = updater.check()
-        self.after(0, lambda: self._checked(info))
+        try:
+            self._put("checked", updater.check())
+        except Exception as e:
+            self._put("error", str(e))
 
     def _checked(self, info):
-        if self._closing:
-            return
         self.info = info
         if not info.get("ok"):
             self._say("確認できませんでした", info.get("why", ""))
@@ -95,7 +139,9 @@ class _UpdateDialog(tk.Toplevel):
                                     "リリースに見当たりません")
             return
         self._say(title, body)
-        self.ok_btn.pack(side="left", padx=4)
+        # RoundButton は Canvas なので lift() は使えない (Canvas の lift と衝突する)。
+        # before= で「リリースページ」の左に置く
+        self.ok_btn.pack(side="left", padx=4, before=self._page_btn)
 
     def _say(self, head, body):
         self.head.configure(text=head)
@@ -109,31 +155,34 @@ class _UpdateDialog(tk.Toplevel):
     def _do_update(self):
         self.ok_btn.pack_forget()
         self.head.configure(text="落としています…")
-        threading.Thread(target=self._download_worker, daemon=True).start()
+        self._start(self._download_worker)
 
     def _download_worker(self):
         try:
             path = updater.download(self.asset, on_progress=self._on_progress)
         except Exception as e:
-            self.after(0, lambda: self._say("落とせませんでした", str(e)))
+            self._put("error", "落とせませんでした: %s" % e)
             return
-        self.after(0, lambda: self._apply(path))
+        self._put("downloaded", path)
 
     def _on_progress(self, got, total):
-        if total:
-            self.after(0, lambda: self.progress.set(got / float(total)))
+        """別スレッドから呼ばれる。箱に置くだけ (画面は触らない)。"""
+        with self._lock:
+            self._progress = (got, total)
 
     def _apply(self, path):
+        self.progress.set(1.0)
         self.head.configure(text="入れ替えています…")
+        self.update_idletasks()
         ok, why = updater.apply(path)
         if not ok:
             self._say("入れ替えられませんでした", why)
             return
         # 入れ替え用のバッチがこのプロセスの終了を待っているので、素直に閉じる
-        self.after(200, self._quit_app)
+        self.after(300, self._quit_app)
 
     def _quit_app(self):
-        self._closing = True
+        self._alive = False
         try:
             self.master.winfo_toplevel().destroy()
         except Exception:
@@ -144,5 +193,5 @@ class _UpdateDialog(tk.Toplevel):
         webbrowser.open(url)
 
     def destroy(self):
-        self._closing = True
+        self._alive = False
         tk.Toplevel.destroy(self)
