@@ -33,6 +33,9 @@ class ImportResult(object):
         self.ambiguous = False
         self.species = None
         self.solutions = []
+        self.guesses = []
+        self.unknown_blueprint = ""
+        self.unknown_tag = ""
 
     @property
     def label(self):
@@ -128,8 +131,22 @@ def import_file(path, species_db, server_multipliers, library=None, server="",
 def _build(res, ec, kind, species_db, sm, library, server, game, parent_lookup):
     sp, bp = resolve_species(species_db, ec.blueprint, ec.species_tag)
     if sp is None:
-        res.problems.append("種族が分かりません: %s (Mod の生物は未対応)"
+        res.problems.append("種族が分かりません: %s"
                             % (ec.species_tag or bp or "?"))
+        res.unknown_blueprint = bp
+        res.unknown_tag = ec.species_tag
+        # 計算式が合う既存種族を探しておく (Mod の生物は使い回しが多い)
+        try:
+            from .. import guess
+            values = {i: v for i, v in enumerate(ec.values)
+                      if getattr(ec, "has_value", [True] * 12)[i]}
+            res.guesses = guess.guess_species(species_db, ec.level, values, sm,
+                                              state=ec.state, imprint=ec.imprint,
+                                              game=game, limit=6)
+            if res.guesses:
+                res.problems.append(guess.describe(res.guesses))
+        except Exception:
+            pass
         return res
     res.species = sp
     sp.apply(sm, game)

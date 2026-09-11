@@ -1,0 +1,124 @@
+{
+ "source": {
+  "generator": "tools/build_extra_species.py",
+  "why": "ARK Smart Breeding のデータにまだ載っていない生物を、wiki の数値と既存生物の係数から組み立てたもの",
+  "entries": [
+   {
+    "name": "Boaratos",
+    "basedOn": "Daeodon",
+    "url": "https://wikily.gg/ja/ark-survival-ascended/dinosaurs/boaratos/"
+   }
+  ]
+ },
+ "species": [
+  {
+   "name": "Boaratos",
+   "bp": "/Game/Mods/Astraeos/Assets/CoreBlueprints/Creatures/Boaratos/Boaratos_Character_BP.Boaratos_Character_BP",
+   "asa": true,
+   "statsRaw": [
+    [
+     1050.0,
+     0.2,
+     0.27,
+     0.5,
+     0.0
+    ],
+    [
+     400.0,
+     0.1,
+     0.1,
+     0.0,
+     0.0
+    ],
+    [
+     5000.0,
+     0.06,
+     0.0,
+     0.5,
+     0.0
+    ],
+    [
+     150.0,
+     0.1,
+     0.1,
+     0.0,
+     0.0
+    ],
+    [
+     5000.0,
+     0.1,
+     0.1,
+     0.0,
+     0.15
+    ],
+    null,
+    null,
+    [
+     500.0,
+     0.02,
+     0.04,
+     0.0,
+     0.0
+    ],
+    [
+     1.0,
+     0.05,
+     0.1,
+     0.4,
+     0.35
+    ],
+    [
+     1.0,
+     0.0,
+     0.01,
+     0.3,
+     0.0
+    ],
+    null,
+    null
+   ],
+   "imprint": [
+    0.2,
+    0.0,
+    0.2,
+    0.0,
+    0.2,
+    0.2,
+    0.0,
+    0.2,
+    0.2,
+    0.2,
+    0.0,
+    0.0
+   ],
+   "mutationMult": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "tbhm": 1.0,
+   "displayedStats": 927,
+   "usedStats": 927,
+   "skipWildLevelStats": 3680,
+   "breeding": {
+    "incubation": 0.0,
+    "gestation": 28571.429,
+    "maturation": 295200.0,
+    "cdMin": 64800.0,
+    "cdMax": 172800.0
+   },
+   "displayName": "Boaratos",
+   "basedOn": "Daeodon",
+   "notes": "ベースと野生の増分は wikily.gg の表から。テイム側の係数 (Id/Ta/Tm)・刷り込み・気絶は Daeodon から借りている (wiki のテイム増分がダエオドンと完全に一致するため)。ブループリントパスは推定。"
+  }
+ ]
+}

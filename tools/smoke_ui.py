@@ -103,6 +103,12 @@ step("通知: オーバーレイを出してみる",
 step("通知: 設定の保存", lambda: (al._save_naming(), al._save_overlay(),
                                  al._save_auto(), app.update()))
 
+step("種族データに追加ぶんが入っている",
+     lambda: _check(app.state_obj.species_db.extra_count >= 1, "extra が 0"))
+step("ボアラトスが引ける",
+     lambda: _check(app.state_obj.species_db.get("Boaratos") is not None,
+                    "見つからない"))
+
 st = app._pages["settings"]
 step("設定: プリセット", lambda: (st._official(), st._vanilla(), app.update()))
 step("設定: 倍率の手入力を読み戻す",

@@ -58,6 +58,7 @@ class SpeciesStat(object):
 class Species(object):
     def __init__(self, rec):
         self.name = rec["name"]
+        self.mod = rec.get("mod") or ""
         self.display_name = rec.get("displayName") or rec["name"]
         self.bp = rec["bp"]
         self.in_asa = bool(rec.get("asa"))
@@ -175,11 +176,39 @@ class Species(object):
 
 
 class SpeciesDB(object):
-    def __init__(self, path=DATA_PATH):
+    def __init__(self, path=DATA_PATH, library_path=None, with_mods=True):
         with io.open(path, encoding="utf-8-sig") as f:
             data = json.load(f)
         self.source = data.get("source", {})
-        self.all = [Species(r) for r in data["species"]]
+        records = list(data["species"])
+        self.extra_count = 0
+        self.mod_count = 0
+
+        # ARKStatsExtractor のデータにまだ載っていない生物 (同梱)
+        extra_path = _find_data("extra_species.json")
+        if os.path.isfile(extra_path):
+            try:
+                with io.open(extra_path, encoding="utf-8-sig") as f:
+                    extra = json.load(f).get("species") or []
+            except (OSError, ValueError):
+                extra = []
+            records.extend(extra)
+            self.extra_count = len(extra)
+        if with_mods:
+            # Mod の生物 (%LOCALAPPDATA%\ArkLibrary\mods) を足す。
+            # 同じブループリントパスなら Mod 側で上書きする
+            from . import modvalues
+            extra = modvalues.load_extra_species(library_path)
+            if extra:
+                by_bp = {r.get("bp"): i for i, r in enumerate(records)}
+                for rec in extra:
+                    i = by_bp.get(rec.get("bp"))
+                    if i is None:
+                        records.append(rec)
+                    else:
+                        records[i] = rec
+                self.mod_count = len(extra)
+        self.all = [Species(r) for r in records]
         self._by_bp = {sp.bp: sp for sp in self.all}
         self._applied_for = None
         # 未適用の Species を外に出さない。apply() 前に stats を参照すると

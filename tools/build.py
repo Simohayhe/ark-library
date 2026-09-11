@@ -113,6 +113,7 @@ def common_args(ver):
         "--version-file", write_version_info(ver),
         "--add-data", "data%sspecies.json%sdata" % (os.sep, os.pathsep),
         "--add-data", "data%scolors.json%sdata" % (os.sep, os.pathsep),
+        "--add-data", "data%sextra_species.json%sdata" % (os.sep, os.pathsep),
         ENTRY,
     ]
 

@@ -262,10 +262,38 @@ Export Gun のサーバー倍率ファイルも読める (設定 →「Export Gu
 毎回この実ファイルを読み戻して「体力47 スタミナ24 重量37 近接26 / 強化は重量に5 /
 テイム効率95%」を復元できるか検算している。
 
+## 生物データを足す
+
+種族データは ARK Smart Breeding (ARKStatsExtractor) 由来。そこに無い生物は
+3 通りで足せる。
+
+### 1. Mod の生物 (設定 → Mod の生物を追加)
+ARK Smart Breeding が配っている Mod ごとのデータ (Obelisk) から選んで入れる。
+ASA 対応のものが 74 件ある。手元の値ファイル (ASB 形式の json) も読める。
+入れたものは `%LOCALAPPDATA%\ArkLibrary\mods\` に置かれる。
+
+### 2. 同梱の追加ぶん (`data/extra_species.json`)
+ASA に追加されたばかりで、まだ ARK Smart Breeding のデータに載っていない生物。
+`tools/build_extra_species.py` が作る。
+
+いまのところ **Boaratos (Astraeos)** が入っている。ベースと野生の増分は
+[wiki](https://wikily.gg/ja/ark-survival-ascended/dinosaurs/boaratos/) の表から、
+テイム側の係数は Daeodon から借りている (wiki のテイム増分がダエオドンと
+完全に一致するため)。
+
+### 3. 知らない種族を当てる
+どのデータにも無い生物を取り込もうとすると、**計算式が当てはまる既存種族**を
+総当たりで探して候補を出す。Mod の生物には既存生物の使い回しが多いので、
+たいてい当たる (全 580 種を 0.1 秒ほどで調べる)。
+
+    当てはまりそうな種族:
+      ◎ Otter                  (解 1 通り / 野生レベル計 205)
+
+種族名 (`DinoNameTag`) でも引けるので、ブループリントパスが違っていても
+名前が合っていれば取り込める。
+
 ## 制限
 
-- **Mod の生物は非対応**。種族データが ARKStatsExtractor 由来のため、
-  そこに無い生物は「種族が分かりません」で弾かれる。
 - ASA 基準。ASE のエクスポートも形は同じだが、移動速度の扱いなどが違う。
 
 ---
@@ -287,6 +315,8 @@ arklib/               計算とデータ (UI に依存しない)
   breeding.py         交配プラン (本体)
   naming.py           M H47 S24 W37 M26 の組み立て (ゼロだけ / OF モードも)
   colors.py           色 ID と色領域 (RGBA から色 ID を当てる)
+  modvalues.py        Mod の種族データの取得と変換
+  guess.py            知らない種族を総当たりで当てる
   records.py          自己ベスト更新 / 最高と同じ の判定
   sounds.py           音の合成と再生 (ふわふわタイマーから流用)
   paths.py            ARK インストール先・エクスポート先の検出
@@ -296,11 +326,13 @@ ui/                   tkinter の画面
   theme.py            角丸ウィジェット (ふわふわタイマーと同じもの)
   table.py            セル単位で色を付けられる一覧表
   overlay.py          取り込んだ瞬間に出る、触れない窓
+  mods_dialog.py      Mod の生物を追加する窓
   autoimport.py       見張り → 取り込み → 名前コピー → 音 → オーバーレイ
   appicon.py          アイコン (棒グラフ)
   update_dialog.py    「更新を確認」の中身
 data/species.json     種族データ 772 種 (うち ASA 579 種)
 data/colors.json      色 100 色と、種族ごとの色領域 1036 種
+data/extra_species.json  まだ本家データに無い生物 (Boaratos など)
 tools/                テストと開発用
 installer/            Inno Setup のインストーラ定義
 ```
@@ -312,12 +344,14 @@ installer/            Inno Setup のインストーラ定義
 ```
 python tools/test_import.py    取り込み〜逆算〜交配プランの通し (52 件・実機ファイル含む)
 python tools/test_alerts.py    名前の組み立てと記録判定 (20 件)
-python tools/test_goals.py     狙い方 (最高/ゼロ)・名前のモード・色 (35 件)
+python tools/test_goals.py     狙い方 (最高/ゼロ)・名前のモード・色・変異 (42 件)
+python tools/test_species.py   生物データの追加・Mod・種族当て (25 件)
 python tools/smoke_ui.py <db>  画面・ダイアログ・自動取り込みの通し
 python tools/seed_demo.py <db> 動作確認用のデモデータを作る
 python tools/build.py          exe をビルドする (onefile / zip / setup.exe)
 python tools/make_ico.py       アイコンを作り直す
 python tools/build_color_db.py 色データを作り直す
+python tools/build_extra_species.py  追加ぶんの生物データを作り直す
 ```
 
 ---

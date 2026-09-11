@@ -222,6 +222,8 @@ class SettingsPage(tk.Frame):
                           bg=theme.CARD).pack(side="right")
         theme.RoundButton(arow, "GitHub", self._open_github, kind="soft",
                           bg=theme.CARD).pack(side="right", padx=6)
+        theme.RoundButton(arow, "Mod の生物を追加", self._open_mods, kind="soft",
+                          bg=theme.CARD).pack(side="right", padx=6)
         tk.Label(ab, text="ステータス計算と種族データは ARKStatsExtractor "
                          "(MIT, (c) 2015 cadon) を元にしています。",
                  bg=theme.CARD, fg=theme.INK_SUB, font=theme.F.get("small"),
@@ -434,6 +436,10 @@ class SettingsPage(tk.Frame):
     def _check_update(self):
         from .update_dialog import check_and_offer
         check_and_offer(self, arklib.__version__)
+
+    def _open_mods(self):
+        from .mods_dialog import ModsDialog
+        ModsDialog(self, self.app)
 
     def _open_github(self):
         import webbrowser
