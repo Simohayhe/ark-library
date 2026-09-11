@@ -20,10 +20,19 @@ from arklib.importers import detect_kind, import_file
 
 from .overlay import StatOverlay
 
+# 見張る間隔の既定 (ミリ秒)。エクスポートしてから名前がコピーされるまでの
+# 待ち時間はほぼこれで決まるので、短めにしてある。
+# 中身を読むのは 20 ms ほどなので、短くしても負担にならない。
+DEFAULT_INTERVAL = 200
+
+# 出来たてのファイルを読み損ねたときに、黙ってやり直す猶予 (秒)。
+# 書き込みの途中を掴むことがあるので、この間の失敗は「失敗」と数えない。
+SETTLE_WINDOW = 1.5
+
 # 既定値。設定はライブラリの settings テーブルに入れる
 DEFAULTS = {
     "auto_import": True,
-    "auto_import_interval": 2000,        # ミリ秒
+    "auto_import_interval": DEFAULT_INTERVAL,
     "naming_copy": True,
     "naming_stats": None,                # None なら naming.DEFAULT_STATS
     "naming_with_sex": True,
@@ -48,6 +57,7 @@ class AutoImport(object):
         self.running = False
         self._job = None
         self._busy = False
+        self._seen = {}          # パス -> 最後に見た更新時刻
         self._sound_cache = os.path.join(
             os.path.dirname(self.st.library.path), "sounds")
         threading.Thread(target=self._prebuild_sounds, daemon=True).start()
@@ -125,32 +135,42 @@ class AutoImport(object):
             self._scan()
         except Exception as e:              # 見張りが例外で止まらないように
             self._log("見張りでエラー: %s" % e, "ng")
-        interval = int(self.get("auto_import_interval") or 2000)
-        self._job = self.app.after(max(500, interval), self._tick)
+        interval = int(self.get("auto_import_interval") or DEFAULT_INTERVAL)
+        self._job = self.app.after(max(150, interval), self._tick)
 
     def _scan(self):
+        """フォルダを見て、増えた / 書き換わったファイルを拾う。
+
+        短い間隔で回すので、毎回 SQLite に聞きに行かないようにしている。
+        ファイルの更新時刻を覚えておいて、**変わったものだけ**を調べる。
+        """
         folder = self.folder()
         if not folder or not os.path.isdir(folder) or self._busy:
             return
         lib = self.st.library
         new_files = []
-        for n in sorted(os.listdir(folder)):
-            if detect_kind(n) is None:
+        for entry in _scandir(folder):
+            if detect_kind(entry.name) is None:
                 continue
-            p = os.path.join(folder, n)
-            m = _mtime(p)
-            if m <= 0 or lib.was_imported(p, m):
+            try:
+                st = entry.stat()
+            except OSError:
                 continue
-            # 書き込み途中のファイルを掴まないよう、少し落ち着くまで待つ
-            if time.time() - m < 0.4:
+            m = st.st_mtime
+            path = entry.path
+            if self._seen.get(path) == m:
+                continue                    # 前に見たときから変わっていない
+            if lib.was_imported(path, m):
+                self._seen[path] = m
                 continue
-            new_files.append((m, p))
+            new_files.append((m, path))
         if not new_files:
             return
         new_files.sort()
         self._busy = True
         try:
-            for _m, p in new_files:
+            for m, p in new_files:
+                self._seen[p] = m
                 self.handle_file(p)
         finally:
             self._busy = False
@@ -169,6 +189,11 @@ class AutoImport(object):
                           parent_lookup=lib.by_ark_id)
 
         if not res.ok:
+            # 出来たてのファイルなら、書き込みの途中を掴んだ可能性がある。
+            # 黙って忘れて、次の周回でもう一度読みに行く
+            if announce and time.time() - _mtime(path) < SETTLE_WINDOW:
+                self._seen.pop(path, None)
+                return res
             lib.mark_imported(path, _mtime(path), None, "ng")
             self._log("失敗  %s" % os.path.basename(path), "ng")
             for p in res.problems:
@@ -194,12 +219,13 @@ class AutoImport(object):
         if self.get("naming_fill_empty") and not cr.name:
             cr.name = name_text
 
-        _uid, action = lib.save(cr)
-        lib.mark_imported(path, _mtime(path), cr.uid, "ok")
-
+        # 名前のコピーがいちばん待たれる仕事なので、保存より先にやる
         copied = False
         if announce and self.get("naming_copy"):
             copied = self._copy(name_text)
+
+        _uid, action = lib.save(cr)
+        lib.mark_imported(path, _mtime(path), cr.uid, "ok")
 
         head = "更新" if action == "updated" else "追加"
         extra = check.label()
@@ -216,7 +242,9 @@ class AutoImport(object):
             if self.get("overlay_enabled"):
                 self.overlay.show_creature(cr, res.species, check, name_text,
                                            copied, action)
-        self.app.reload_pages()
+        # 一覧や交配プランの作り直しは重いことがあるので、後回しにする。
+        # (先にコピー・音・オーバーレイを済ませてしまう)
+        self.app.after(30, self.app.reload_pages)
         return res
 
     # ---- 小物 ----------------------------------------------------------
@@ -270,3 +298,23 @@ def _mtime(path):
         return os.path.getmtime(path)
     except OSError:
         return 0.0
+
+
+def _scandir(folder):
+    try:
+        return list(os.scandir(folder))
+    except OSError:
+        return []
+
+
+def _is_stable(path, size, wait=0.05):
+    """少し待っても大きさが変わらなければ、書き終わったとみなす。
+
+    いまは使っていない (読めなかったら次の周回でやり直す方式にしたため)。
+    手で「全部読み直す」ときの保険として残してある。
+    """
+    time.sleep(wait)
+    try:
+        return os.path.getsize(path) == size
+    except OSError:
+        return False

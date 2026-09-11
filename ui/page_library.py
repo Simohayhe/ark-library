@@ -68,6 +68,8 @@ class LibraryPage(tk.Frame):
                           bg=theme.BG).pack(side="right", padx=3)
         theme.RoundButton(right, "詳細", self._open_detail, kind="soft",
                           bg=theme.BG).pack(side="right", padx=3)
+        theme.RoundButton(right, "変異を割り出す", self._reassign_mutations,
+                          kind="soft", bg=theme.BG).pack(side="right", padx=3)
         theme.RoundButton(right, "交配プランへ", self._to_plan, kind="primary",
                           bg=theme.BG).pack(side="right", padx=3)
 
@@ -367,6 +369,20 @@ class LibraryPage(tk.Frame):
         if c is None:
             return
         _StatusDialog(self, self.st.library, c, self._after_change)
+
+    def _reassign_mutations(self):
+        """あとから親が揃った個体の変異を振り分け直す。"""
+        fixed, looked, notes = breeding.reassign_mutations(self.st.library)
+        lines = ["親が見つかった個体: %d 体" % looked,
+                 "変異を割り出せた個体: %d 体" % fixed]
+        for c, note in notes[:12]:
+            lines.append("  %s … %s" % (c.display_name, note))
+        if looked == 0:
+            lines.append("")
+            lines.append("両親の両方（または片方）がライブラリに入っていないと"
+                         "判定できません。親もエクスポートして取り込んでください。")
+        messagebox.showinfo("変異の割り出し", "\n".join(lines), parent=self)
+        self._after_change()
 
     def _to_plan(self):
         self.app.show("plan")

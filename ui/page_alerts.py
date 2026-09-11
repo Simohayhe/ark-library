@@ -25,6 +25,9 @@ STAT_LABEL = {ark.HEALTH: "体力", ark.STAMINA: "スタミナ", ark.OXYGEN: "�
 
 SECONDS_CHOICES = ["2", "3", "5", "8", "10", "15"]
 
+# 見張る間隔 (秒)。既定は 0.4 秒
+INTERVAL_CHOICES = ["0.2", "0.3", "0.4", "0.5", "1", "2", "3"]
+
 
 class AlertsPage(tk.Frame):
     def __init__(self, master, app):
@@ -68,10 +71,11 @@ class AlertsPage(tk.Frame):
         self.interval = tk.StringVar()
         box = ttk.Combobox(row, textvariable=self.interval, width=6,
                            state="readonly", style="Cute.TCombobox",
-                           values=["1", "2", "3", "5"])
+                           values=INTERVAL_CHOICES)
         box.pack(side="left", padx=6)
         box.bind("<<ComboboxSelected>>", lambda _e: self._save_auto())
-        tk.Label(row, text="秒", bg=theme.CARD, fg=theme.INK_SUB,
+        tk.Label(row, text="秒  (短いほど名前が早くコピーされます)",
+                 bg=theme.CARD, fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(side="left")
         self.folder_label = tk.Label(b, text="", bg=theme.CARD, fg=theme.INK_SUB,
                                      font=theme.F.get("small"), anchor="w",
@@ -235,7 +239,8 @@ class AlertsPage(tk.Frame):
         self._loading = True
         a = self.auto
         self.auto_on.set(bool(a.get("auto_import")))
-        self.interval.set(str(int((a.get("auto_import_interval") or 2000) / 1000)))
+        ms = a.get("auto_import_interval") or 400
+        self.interval.set(("%g" % (ms / 1000.0)))
         folder = a.folder()
         self.folder_label.configure(
             text=("見張っているフォルダ: " + folder) if folder

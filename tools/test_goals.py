@@ -137,6 +137,33 @@ def main():
     ranked = breeding.rank_color_pairs([m, f], {0: 10, 1: 20})
     check("6.11 ペアを並べられる", len(ranked), 1)
 
+    print("\n[7] あとから親が揃ったときの変異の割り出し")
+    import tempfile
+
+    from arklib.library import Library
+
+    lib = Library(os.path.join(tempfile.mkdtemp(prefix="mut_"), "lib.db"))
+    dad = mk("父", MALE, hp=30, me=40)
+    dad.ark_id = 111
+    mom = mk("母", FEMALE, hp=30, me=35)
+    mom.ark_id = 222
+    kid = mk("子", MALE, hp=30, me=42)          # 近接が父より +2 = 変異
+    kid.ark_id = 333
+    kid.father_ark_id, kid.mother_ark_id = 111, 222
+    for c in (kid, dad, mom):                   # 子を先に入れる
+        lib.save(c)
+    check("7.1 取り込み直後は変異が分からない",
+          lib.by_ark_id(333).levels_mut[ME], 0)
+    fixed, looked, notes = breeding.reassign_mutations(lib)
+    check("7.2 親が見つかった", looked, 1)
+    check("7.3 直した", fixed, 1)
+    check("7.4 近接に変異 +2", lib.by_ark_id(333).levels_mut[ME], 2)
+    check("7.5 野生ぶんは父から", lib.by_ark_id(333).levels_wild[ME], 40)
+    check("7.6 継承レベルは変わらない", lib.by_ark_id(333).bl(ME), 42)
+    again = breeding.reassign_mutations(lib)[0]
+    check("7.7 二度目は何も変えない", again, 0)
+    lib.close()
+
     print("\n" + "=" * 66)
     print("%d 件成功 / %d 件失敗" % (len(PASS), len(FAIL)))
     if FAIL:

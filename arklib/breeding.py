@@ -22,6 +22,7 @@ ARK の交配ルール (ARKStatsExtractor/Ark.cs の定数に合わせてある)
 
 確率は 1 個の卵あたりの値。平均して何匹孵せばいいかは 1/確率 で出す。
 """
+import json
 import math
 
 from . import ark
@@ -676,3 +677,40 @@ def rank_color_pairs(creatures, targets, species_db=None, limit=40,
                 out.append(cp)
     out.sort(key=lambda p: (p.probability, -len(p.risky_regions)), reverse=True)
     return out[:limit] if limit else out
+
+
+# ---- あとから変異を割り出し直す ----------------------------------------
+
+
+def reassign_mutations(library, species_bp=None):
+    """ライブラリ全体を見直して、親が見つかる個体の変異を振り分け直す。
+
+    子を先に取り込んで、あとから親を入れた場合、取り込み時には親が居なくて
+    変異が分からなかった個体が残る。これはそれを拾い直すためのもの。
+
+    戻り値 (直した数, 見た数, [(個体, メモ), ...])
+    """
+    creatures = (library.by_species(species_bp) if species_bp
+                 else library.all_creatures())
+    by_ark = {c.ark_id: c for c in creatures if c.ark_id}
+    fixed, notes = 0, []
+    looked = 0
+    for c in creatures:
+        if not c.is_bred or not (c.mother_ark_id or c.father_ark_id):
+            continue
+        mother = by_ark.get(c.mother_ark_id)
+        father = by_ark.get(c.father_ark_id)
+        if mother is None and father is None:
+            continue
+        looked += 1
+        lw, lm, note = infer_mutations(c.breeding_levels(), mother, father)
+        if lw == c.levels_wild and lm == c.levels_mut:
+            continue
+        if not any(lm):
+            continue            # 変異なしと分かっただけなら触らない
+        library.update_fields(c.uid, levels_wild=json.dumps(lw),
+                              levels_mut=json.dumps(lm))
+        fixed += 1
+        if note:
+            notes.append((c, "・".join(note)))
+    return fixed, looked, notes
