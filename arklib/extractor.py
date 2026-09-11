@@ -109,8 +109,19 @@ def _calc(sp, s, ex, lw, ld):
                             round_to_ingame=False)
 
 
+_TOL_CACHE = {}
+
+
 def _tolerance(s, value):
-    return stats.displayed_aberration(value, ark.precision(s))
+    """表示値の丸め誤差の幅。同じ値で何万回も呼ばれるので覚えておく。"""
+    key = (s, value)
+    got = _TOL_CACHE.get(key)
+    if got is None:
+        got = stats.displayed_aberration(value, ark.precision(s))
+        if len(_TOL_CACHE) > 4096:
+            _TOL_CACHE.clear()
+        _TOL_CACHE[key] = got
+    return got
 
 
 def _wild_levels_for(sp, ex, s, ld, cap):

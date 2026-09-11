@@ -198,7 +198,8 @@ class ImportPage(tk.Frame):
             if skip_known and lib.was_imported(p, _mtime(p)):
                 skipped += 1
                 continue
-            r = self.auto.handle_file(p, announce=False)
+            # 手で取り込むときは、時間をかけてでも解きにいく
+            r = self.auto.handle_file(p, announce=False, budget=8.0)
             if r.ok:
                 if r.action == "updated":
                     updated += 1

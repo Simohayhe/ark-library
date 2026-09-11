@@ -99,7 +99,7 @@ def detect_kind(path):
 
 
 def import_file(path, species_db, server_multipliers, library=None, server="",
-                game="asa", parent_lookup=None):
+                game="asa", parent_lookup=None, budget=None):
     """エクスポートファイルを 1 個読んで Creature を作る。
 
     library を渡すと保存もする (同一個体なら更新)。
@@ -125,10 +125,11 @@ def import_file(path, species_db, server_multipliers, library=None, server="",
         return res
 
     return _build(res, ec, kind, species_db, server_multipliers, library,
-                  server, game, parent_lookup)
+                  server, game, parent_lookup, budget)
 
 
-def _build(res, ec, kind, species_db, sm, library, server, game, parent_lookup):
+def _build(res, ec, kind, species_db, sm, library, server, game, parent_lookup,
+           budget=None):
     sp, bp = resolve_species(species_db, ec.blueprint, ec.species_tag)
     if sp is None:
         res.problems.append("種族が分かりません: %s"
@@ -187,9 +188,31 @@ def _build(res, ec, kind, species_db, sm, library, server, game, parent_lookup):
     else:
         from .. import extraction
         values = {s: v for s, v in enumerate(ec.values) if ec.has_value[s]}
+
+        # 同じ個体を前に取り込んでいれば、そのときのテイム効率を使い回す。
+        # 効率はテイムしたときに決まって以降変わらないので、これで
+        # 「強化レベルを振ったら読めなくなる」を避けられる (しかも速い)
+        known_wild = None
+        if ec.state == STATE_TAMED and ec.ark_id:
+            lookup = parent_lookup
+            if lookup is None and library is not None:
+                lookup = library.by_ark_id
+            if lookup is not None:
+                prior = lookup(ec.ark_id)
+                if prior is not None and any(prior.levels_wild):
+                    known_wild = list(prior.breeding_levels())
+
         ex = extraction.extract_levels(
             sp, ec.level, values, sm, state=ec.state, imprint=ec.imprint,
-            taming_eff=1.0 if ec.state != STATE_TAMED else None, game=game)
+            taming_eff=(1.0 if ec.state != STATE_TAMED else None), game=game,
+            known_wild=known_wild, budget=budget)
+        if not ex.ok and known_wild is not None:
+            # 前回の野生レベルと噛み合わない (取り違え等)。総当たりでやり直す
+            ex = extraction.extract_levels(
+                sp, ec.level, values, sm, state=ec.state, imprint=ec.imprint,
+                taming_eff=None, game=game, budget=budget)
+        elif known_wild is not None and ex.ok:
+            res.notes.append("前に取り込んだときの野生レベルを手がかりにしました")
         res.notes.extend(ex.notes)
         if not ex.ok:
             res.problems.extend(ex.problems)

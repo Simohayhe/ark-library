@@ -177,8 +177,12 @@ class AutoImport(object):
 
     # ---- 1 ファイルの処理 ----------------------------------------------
 
-    def handle_file(self, path, announce=True):
-        """取り込んで、音・オーバーレイ・クリップボードまでやる。"""
+    def handle_file(self, path, announce=True, budget=None):
+        """取り込んで、音・オーバーレイ・クリップボードまでやる。
+
+        budget は逆算にかけてよい秒数。自動取り込みは短く (画面が止まるため)、
+        手で選んだときは長めにする。
+        """
         lib = self.st.library
         sm = self.st.multipliers.with_single_player_applied()
         server = self.st.server
@@ -186,7 +190,7 @@ class AutoImport(object):
         # 記録の判定を挟みたいので、ここでは保存しない
         res = import_file(path, self.st.species_db, sm, library=None,
                           server=server, game=self.st.game,
-                          parent_lookup=lib.by_ark_id)
+                          parent_lookup=lib.by_ark_id, budget=budget)
 
         if not res.ok:
             # 出来たてのファイルなら、書き込みの途中を掴んだ可能性がある。

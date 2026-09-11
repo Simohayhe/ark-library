@@ -257,6 +257,10 @@ def main():
     print("\n[3.6] 実機 ASA のエクスポートファイル")
     _real_file_check(db)
 
+    # ---- [3.7] 強化レベルを振ったテイム個体 --------------------------
+    print("\n[3.7] 強化レベルを振ったテイム個体 (前は読めなくなっていた)")
+    _leveled_tamed_check(db, sm, rex, tmp)
+
     # ---- [4] ライブラリ保存と重複判定 --------------------------------
     print("\n[4] ライブラリ (SQLite)")
     dbfile = os.path.join(tmp, "library.db")
@@ -359,6 +363,54 @@ def _real_file_check(db):
     check("3.6.13 解は一意", r.ambiguous, False)
     check("3.6.14 飼い主", c.owner, "Simon")
     db.apply_multipliers(ServerMultipliers.official("asa"), "asa")
+
+
+def _leveled_tamed_check(db, sm, rex, tmp):
+    """テイム個体に強化レベルを振っても逆算できるか。
+
+    以前はテイム効率の候補を 40 件で打ち切っていたため、強化レベルを
+    15 も振ると正解の効率が候補から漏れて読めなくなっていた。
+    """
+    from arklib.library import Library
+    from arklib.importers import import_file
+
+    te = 0.78
+    lw = [0] * 12
+    for s, v in ((ark.HEALTH, 60), (ark.STAMINA, 21), (ark.OXYGEN, 15),
+                 (ark.FOOD, 25), (ark.WEIGHT, 18), (ark.MELEE, 33)):
+        lw[s] = v
+    lib = Library(os.path.join(tmp, "leveled.db"))
+
+    def make(ld_map, name, ark_id=(4242, 4242)):
+        ld = [0] * 12
+        for s, v in ld_map.items():
+            ld[s] = v
+        level = 1 + sum(lw) + sum(ld)
+        text = make_export_ini(rex, sm, lw, ld, level, state="tamed",
+                               taming_eff=te, name=name, sex=MALE, ark_id=ark_id)
+        p = os.path.join(tmp, name + ".ini")
+        with io.open(p, "w", encoding="utf-8") as f:
+            f.write(text)
+        return p
+
+    # まだ何も振っていない状態
+    r = import_file(make({}, "テイム直後"), db, sm, library=lib, server="t")
+    check("3.7.1 強化なしは読める", r.ok, True)
+    check("3.7.2 テイム効率", round((r.creature.taming_eff or 0), 2), 0.78)
+
+    # 振ったあと。前回の野生レベルを手がかりにできる
+    for n in (20, 60, 150):
+        r = import_file(make({ark.HEALTH: n // 2, ark.MELEE: n - n // 2},
+                             "強化%d" % n), db, sm, library=lib, server="t")
+        ok = (r.ok and r.creature.levels_wild[ark.HEALTH] == 60
+              and r.creature.levels_dom[ark.MELEE] == n - n // 2)
+        check("3.7.3 強化 %d を振っても読める" % n, ok, True)
+
+    # はじめて見る個体 (手がかりなし) でも、そこそこ振ってあれば読めること
+    r = import_file(make({ark.HEALTH: 15, ark.MELEE: 15}, "初見",
+                         ark_id=(777, 888)), db, sm, library=lib, server="t")
+    check("3.7.4 初見でも強化 30 なら読める", r.ok, True)
+    lib.close()
 
 
 def _make_population(sp):
