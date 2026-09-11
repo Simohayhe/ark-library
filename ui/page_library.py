@@ -176,25 +176,43 @@ class LibraryPage(tk.Frame):
             self._fill_table()
             return
         self.stat_list = stat_columns(self.species)
-        self.tops = breeding.top_levels(self.creatures, self.stat_list,
-                                        include_dead=self.include_dead.get())
+        # 交配プランで決めた狙い方 (ゼロ狙いなど) に合わせて光らせる
+        self.goals = self._goals_for(self.stat_list)
+        self.tops = breeding.target_levels(self.creatures, self.goals,
+                                           include_dead=self.include_dead.get())
         self._build_table(self.stat_list)
         self._fill_table()
         self._update_header()
 
+    def _goals_for(self, stat_list):
+        """交配プラン画面で決めた狙い方。無ければ全部「最高狙い」。"""
+        saved = self.st.library.get_setting("plan_goals_%s" % self.species_bp, None)
+        goals = {s: breeding.MAX for s in stat_list}
+        for key, goal in (saved or {}).items():
+            try:
+                s = int(key)
+            except (TypeError, ValueError):
+                continue
+            if s in goals and goal in (breeding.MAX, breeding.MIN):
+                goals[s] = goal
+        return goals
+
     def _update_header(self):
-        info = breeding.library_summary(self.creatures, self.stat_list)
+        info = breeding.library_summary(self.creatures, goals=self.goals)
+        has_min = any(g == breeding.MIN for g in self.goals.values())
         self.sub.configure(
-            text="%s: %d体 (♂%d ♀%d) / 最高ステを全部集めると Lv%d"
+            text="%s: %d体 (♂%d ♀%d) / %sを全部集めると 素Lv%d"
             % (self.species.display_name, info["count"], info["males"],
-               info["females"], info["best_possible_level"]))
+               info["females"], "狙った値" if has_min else "最高ステ",
+               info["best_possible_level"]))
         tops_text = " ".join(
-            "%s%d" % (SHORT_JA.get(s, ark.NAMES_JA[s]), lv)
+            "%s%d%s" % (SHORT_JA.get(s, ark.NAMES_JA[s]), lv,
+                        "↓" if self.goals.get(s) == breeding.MIN else "")
             for s, lv in sorted(self.tops.items()))
         done = len(info["complete"])
         self.tops_label.configure(
-            text="最高値: %s%s" % (tops_text,
-                                 ("  ★完成個体 %d体" % done) if done else ""))
+            text="%s: %s%s" % ("目標" if has_min else "最高値", tops_text,
+                               ("  ★完成個体 %d体" % done) if done else ""))
 
     # ---- 表 ------------------------------------------------------------
 
@@ -288,6 +306,14 @@ class LibraryPage(tk.Frame):
             return None
         top = self.tops[s]
         lv = c.bl(s)
+        goal = getattr(self, "goals", {}).get(s, breeding.MAX)
+        if goal == breeding.MIN:
+            # ゼロ狙いのステータスは「低いほど良い」ので低い方を光らせる
+            if lv <= top:
+                return (theme.SKY, theme.ON_ACCENT, True)
+            if lv <= top + 2:
+                return (theme.FIELD, theme.SKY, True)
+            return None
         if top > 0 and lv >= top:
             return (theme.PINK, theme.ON_ACCENT, True)
         if top > 0 and lv >= top - 2:

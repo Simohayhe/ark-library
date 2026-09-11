@@ -3,7 +3,7 @@
 
 やることは 3 つ。
     おすすめペア … 今すぐ掛けるならどの組み合わせが良いか
-    仕上げの手順 … 最高ステを 1 匹に集めるまでの世代ごとの段取り
+    仕上げの手順 … 狙ったステータスを 1 匹に集めるまでの世代ごとの段取り
     変異狙い     … 完成個体を崩さずに変異を足せるペア
 """
 import tkinter as tk
@@ -260,8 +260,21 @@ class PlanPage(tk.Frame):
                         "↓" if goals.get(s) == breeding.MIN else "")
             for s, lv in sorted(tops.items()))
         done = info["complete"]
+        zero_mode = all(g == breeding.MIN for g in goals.values())
         goal = ("目標 (いまライブラリにある一番いい値): %s → 全部そろえば 素Lv%d"
                 % (tops_text, info["best_possible_level"]))
+        if zero_mode:
+            # 交配では「両親より低い値」は出ない。0 を持つ個体が居ないステータスは
+            # そこで頭打ちになるので、何が足りないのかを書く
+            missing_zero = [SHORT_JA.get(s, ark.NAMES_JA[s])
+                            for s, lv in sorted(tops.items()) if lv > 0]
+            if missing_zero:
+                goal += ("\n  いまの群れではここが下限です。"
+                         "0 を持つ個体が居ないステ: %s"
+                         "  ← 低い個体を捕まえて入れると、そのぶん下がります"
+                         % "・".join(missing_zero))
+            else:
+                goal += "  ← 素レベル 1 まで行けます"
         if done:
             goal += "   ★もう揃っている個体: " + "、".join(
                 c.display_name for c in done[:3])
@@ -278,7 +291,8 @@ class PlanPage(tk.Frame):
         if self.pair_table is None:
             cols = [Col("male", "♂ オス", 150),
                     Col("female", "♀ メス", 150),
-                    Col("tops", "最高ステ", 70, align="e", numeric=True),
+                    Col("tops", "目標達成", 70, align="e",
+                        sort_key=lambda r: r.get("_tops", 0)),
                     Col("best", "最良の子", 72, align="e", numeric=True),
                     Col("exp", "期待Lv", 66, align="e", numeric=True),
                     Col("prob", "当たり率", 70, align="e",
@@ -314,7 +328,9 @@ class PlanPage(tk.Frame):
                 "_tops": p.top_count,
             })
         self.pair_table.set_rows(rows, keep_sort=False)
-        self.pair_table.sort_by("best", desc=True)
+        # 「目標をいくつ満たせるか」で並べる。ゼロ狙いだとレベルの高い順に
+        # 並べても意味がないので、ここは狙い方に関係なく達成数を先に見る
+        self.pair_table.sort_by("tops", desc=True)
 
     def _pair_cell(self, row, key):
         p = row.get("_obj")
@@ -351,10 +367,10 @@ class PlanPage(tk.Frame):
             have = [name(s) for s in breeding.covered_stats(c, tops, self.goals)]
             lines.append(("step", "  %s %s  素Lv%d"
                           % (c.sex_ja, c.display_name, c.base_level())))
-            lines.append(("sub", "      最高値を持っているステータス: %s"
+            lines.append(("sub", "      目標に届いているステータス: %s"
                           % ("、".join(have) or "なし")))
         if missing:
-            lines.append(("warn", "  ※ %s は最高値の持ち主が交配に使えません "
+            lines.append(("warn", "  ※ %s は目標値の持ち主が交配に使えません "
                                   "(去勢・死亡・性別不明)"
                           % "、".join(name(s) for s in missing)))
         lines.append(("", ""))
@@ -370,7 +386,7 @@ class PlanPage(tk.Frame):
                               % (i, stp.generation, _who(stp.a), _who(stp.b))))
                 got = [name(s) for s in stp.needed_stats]
                 lines.append(("sub", "      欲しい子: 素Lv%d。"
-                                     "必要な最高値が全部そろう確率 %.1f%% (平均 %.0f 匹)"
+                                     "必要な値が全部そろう確率 %.1f%% (平均 %.0f 匹)"
                               % (1 + sum(stp.result_stats.values()),
                                  stp.probability * 100, stp.eggs_needed)))
                 if got:
@@ -394,6 +410,11 @@ class PlanPage(tk.Frame):
         lines.append(("", ""))
         lines.append(("sub", "※ ARK の継承は「高い方の親の値を 55%、低い方を 45%」。"
                              "ステータスごとに独立して決まります。"))
+        if any(g == breeding.MIN for g in self.goals.values()):
+            lines.append(("sub", "　 ゼロ狙い (↓) のステータスは低い方が欲しいので、"
+                                 "当たる確率は 45% になります。"))
+            lines.append(("sub", "　 両親より低い値は出ません。下限を下げたいときは、"
+                                 "そのステータスが低い個体を捕まえて入れてください。"))
         self._write_plan(lines)
 
     def _write_plan(self, lines):
@@ -519,7 +540,7 @@ class PlanPage(tk.Frame):
                     Col("mut", "変異率", 70, align="e",
                         sort_key=lambda r: r.get("_mut", 0)),
                     Col("counters", "変異カウンタ", 120, align="center"),
-                    Col("tops", "最高ステ", 70, align="e"),
+                    Col("tops", "目標達成", 70, align="e"),
                     Col("note", "ひとこと", 300)]
             self.mut_table = Table(self.mut_holder, cols, bg=theme.CARD,
                                    min_rows=10)
@@ -531,7 +552,7 @@ class PlanPage(tk.Frame):
         for p in plans:
             note = []
             if p.top_count >= len(tops):
-                note.append("この子は最高ステを保ったまま変異を狙える")
+                note.append("この子は狙ったステを保ったまま変異を狙える")
             elif p.needed:
                 note.append("先にステータスを揃えた方が早い")
             over = [x.display_name for x in (p.male, p.female)
