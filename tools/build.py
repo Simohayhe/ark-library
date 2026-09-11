@@ -112,6 +112,7 @@ def common_args(ver):
         "--icon", os.path.join("assets", "icon.ico"),
         "--version-file", write_version_info(ver),
         "--add-data", "data%sspecies.json%sdata" % (os.sep, os.pathsep),
+        "--add-data", "data%scolors.json%sdata" % (os.sep, os.pathsep),
         ENTRY,
     ]
 
