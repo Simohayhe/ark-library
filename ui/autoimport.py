@@ -260,13 +260,24 @@ class AutoImport(object):
             self._play(_event_for(check))
             if self.get("overlay_enabled"):
                 self.overlay.show_creature(cr, res.species, check, name_text,
-                                           copied, action)
+                                           copied, action,
+                                           ideal_score=self._ideal_score(cr))
         # 一覧や交配プランの作り直しは重いことがあるので、後回しにする。
         # (先にコピー・音・オーバーレイを済ませてしまう)
         self.app.after(30, self.app.reload_pages)
         return res
 
     # ---- 小物 ----------------------------------------------------------
+
+    def _ideal_score(self, cr):
+        """理想個体を決めてあれば、この個体が何 % 近いかを出す。"""
+        from arklib import ideal as arkideal
+        idl = arkideal.load(self.st.library, cr.species_bp)
+        if idl.empty:
+            return None
+        siblings = self.st.library.by_species(cr.species_bp, None, False)
+        refs = arkideal.refs_from(siblings + [cr])
+        return idl.score(cr, refs, cr.species_bp)
 
     def _copy(self, text):
         try:

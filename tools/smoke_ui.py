@@ -41,7 +41,7 @@ app.update()
 # 交配計画はライブラリ画面の中に畳まれている
 step("交配計画を開く", lambda: (lib_page._toggle_plan(), app.update(),
                                 _check(lib_page.plan_open, "開かない")))
-for tab in ("partner", "pairs", "plan", "mutation", "color"):
+for tab in ("pairs", "plan", "mutation", "color"):
     step("交配計画のタブ: %s" % tab,
          lambda t=tab: (lib_page.plan_page._set_tab(t),
                         lib_page.plan_page.recalc(), app.update()))
@@ -51,7 +51,7 @@ step("個体を選ぶと相手を探す",
                      "対象が渡っていない")))
 
 def genderless_plan():
-    """性別が無い種族 (メイグアナ) でも交配の相手が出るか。"""
+    """性別が無い種族 (メイグアナ) でも交配のペアが出るか。"""
     bps = [r["species_bp"] for r in lib_page._summary
            if (app.state_obj.species_db.by_bp(r["species_bp"]) or None)
            and app.state_obj.species_db.by_bp(r["species_bp"]).no_gender]
@@ -64,15 +64,44 @@ def genderless_plan():
     app.update()
     c = lib_page.plan_page.focus_creature
     _check(c is not None and c.is_genderless, "U の個体が渡っていない")
-    lib_page.plan_page._set_tab("partner")
+    lib_page.plan_page._set_tab("pairs")
     lib_page.plan_page.recalc()
     app.update()
-    rows = lib_page.plan_page.partner_table.rows
+    rows = lib_page.plan_page.pair_table.rows
     _check(any(r.get("_obj") is not None for r in rows),
-           "交配の相手が 1 件も出ない")
+           "交配のペアが 1 件も出ない")
 
 
 step("性別なし種族の交配表", genderless_plan)
+
+
+def pairs_focus_filter():
+    """選んだ個体を含むペアだけに絞れるか。"""
+    lib_page._select_species(lib_page._species_bps[0])
+    app.update()
+    lib_page.table.select_by(lambda r: True)
+    app.update()
+    me = lib_page.plan_page.focus_creature
+    _check(me is not None, "個体が渡っていない")
+    lib_page.plan_page._set_tab("pairs")
+    lib_page.plan_page.recalc()
+    app.update()
+    everything = len(lib_page.plan_page.pair_table.rows)
+    lib_page.plan_page.only_focus.set(True)
+    lib_page.plan_page._refill_pairs()
+    app.update()
+    narrowed = lib_page.plan_page.pair_table.rows
+    _check(narrowed, "絞ったら 1 件も残らなかった")
+    for r in narrowed:
+        p = r["_obj"]
+        _check(me.uid in (p.male.uid, p.female.uid), "関係ないペアが残っている")
+    _check(len(narrowed) <= everything, "絞ったのに増えた")
+    lib_page.plan_page.only_focus.set(False)
+    lib_page.plan_page._refill_pairs()
+    app.update()
+
+
+step("おすすめペアの絞り込み", pairs_focus_filter)
 
 step("交配計画を閉じる", lambda: (lib_page._toggle_plan(), app.update(),
                                   _check(not lib_page.plan_open, "閉じない")))
@@ -100,6 +129,99 @@ def open_detail():
 
 
 step("個体の詳細ダイアログ", open_detail)
+
+
+def row_menu():
+    """右クリックのメニューが組み立てられるか (出すと止まるので中身だけ)。"""
+    row = lib_page.table.selected_row()
+    _check(row is not None, "行が選ばれていない")
+    m = lib_page._build_row_menu(row)
+    _check(m is not None, "メニューができない")
+    _check(int(m.index("end")) >= 6, "項目が足りない")
+    m.destroy()
+    app.update()
+
+
+step("行の右クリックメニュー", row_menu)
+
+
+def edit_stats():
+    from ui.edit_dialog import StatEditDialog
+    from arklib import ark
+    c = lib_page.table.selected_obj()
+    d = StatEditDialog(lib_page, app, c)
+    app.update()
+    before = c.bl(ark.HEALTH)
+    d.wild[ark.HEALTH].set(str(before + 3))
+    d._preview()
+    d._save()
+    app.update()
+    got = app.state_obj.library.get(c.uid)
+    _check(got.bl(ark.HEALTH) == before + 3,
+           "体力が変わっていない (%d)" % got.bl(ark.HEALTH))
+    _check(got.ambiguous is False, "手直ししたのに ambiguous が残っている")
+    # 元に戻す
+    d2 = StatEditDialog(lib_page, app, got)
+    d2.wild[ark.HEALTH].set(str(before))
+    d2._save()
+    app.update()
+
+
+step("ステータスの編集", edit_stats)
+
+
+def edit_colors():
+    from ui.edit_dialog import ColorEditDialog
+    c = lib_page.table.selected_obj()
+    d = ColorEditDialog(lib_page, app, c)
+    app.update()
+    region = sorted(d.buttons)[0]
+    d._set(region, 14)
+    d._save()
+    app.update()
+    got = app.state_obj.library.get(c.uid)
+    _check(got.colors[region] == 14, "色が変わっていない")
+
+
+step("色の編集", edit_colors)
+
+
+def ideal_flow():
+    """理想個体を決めて、一覧に % が出るか。"""
+    from arklib import ideal as arkideal
+    from ui.ideal_dialog import IdealDialog
+    c = lib_page.table.selected_obj()
+    d = IdealDialog(lib_page, app, lib_page.species_bp,
+                    lib_page.species.display_name, lib_page.stat_list,
+                    creatures=lib_page.creatures, selected=c)
+    app.update()
+    d._from_selected()          # 選んだ個体をそのまま理想にする
+    d._save()
+    app.update()
+    idl = arkideal.load(app.state_obj.library, lib_page.species_bp)
+    _check(not idl.empty, "理想個体が保存されていない")
+    lib_page._select_species(lib_page.species_bp)
+    app.update()
+    keys = [col.key for col in lib_page.table.cols]
+    _check("ideal" in keys, "理想の列が出ていない")
+    row = next(r for r in lib_page.table.rows if r["_obj"].uid == c.uid)
+    _check(row["_ideal"] >= 99.9, "元にした個体が 100%% にならない (%s)"
+           % row["ideal"])
+    # ペアの表にも出る
+    lib_page.plan_page._set_tab("pairs")
+    lib_page.plan_page.recalc()
+    app.update()
+    prow = lib_page.plan_page.pair_table.rows
+    if prow and prow[0].get("_obj") is not None:
+        _check("_ideal" in prow[0], "ペアに理想の列が出ていない")
+    # 片付ける
+    arkideal.save(app.state_obj.library, lib_page.species_bp, None)
+    lib_page._select_species(lib_page.species_bp)
+    lib_page.table.select_by(lambda r: True)      # 次のテストのために選び直す
+    app.update()
+
+
+step("理想個体の設定と達成率", ideal_flow)
 
 
 def open_status():

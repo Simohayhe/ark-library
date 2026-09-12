@@ -39,7 +39,7 @@ class Col(object):
 class Table(tk.Frame):
     def __init__(self, master, cols, on_select=None, on_activate=None,
                  cell_style=None, row_style=None, bg=None, min_rows=6,
-                 on_header_menu=None):
+                 on_header_menu=None, on_row_menu=None):
         bg = theme.CARD if bg is None else bg
         tk.Frame.__init__(self, master, bg=bg)
         self.cols = list(cols)
@@ -48,6 +48,7 @@ class Table(tk.Frame):
         self.cell_style = cell_style
         self.row_style = row_style
         self.on_header_menu = on_header_menu
+        self.on_row_menu = on_row_menu
         self.bg = bg
 
         self.rows = []
@@ -355,11 +356,14 @@ class Table(tk.Frame):
 
     def _on_right_click(self, e):
         i = self._row_at(e.y)
-        if i is not None:
-            self.selected = i
-            self._draw_rows()
-            if self.on_select:
-                self.on_select(self.rows[i])
+        if i is None:
+            return
+        self.selected = i
+        self._draw_rows()
+        if self.on_select:
+            self.on_select(self.rows[i])
+        if self.on_row_menu:
+            self.on_row_menu(self.rows[i], e)
 
     def _col_at(self, x):
         x += self.xoffset

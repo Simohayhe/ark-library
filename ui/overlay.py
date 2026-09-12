@@ -67,7 +67,7 @@ class StatOverlay(object):
     # ---- 出す --------------------------------------------------------
 
     def show_creature(self, creature, species, record=None, name_text="",
-                      copied=False, action=""):
+                      copied=False, action="", ideal_score=None):
         """取り込めたときの表示。"""
         tone = _tone_for(record)
         win, box = self._open(tone)
@@ -113,6 +113,22 @@ class StatOverlay(object):
                 text += " (変異%d)" % (creature.levels_mut[s] // 2)
             tk.Label(cell, text=text, bg=theme.CARD, fg=level_fg,
                      font=theme.F.get("num_s")).pack(anchor="w")
+
+        # 理想個体までの近さ
+        if ideal_score is not None and ideal_score.items:
+            line = tk.Frame(box, bg=theme.CARD)
+            line.pack(fill="x", padx=18, pady=(0, 2))
+            pct = ideal_score.percent
+            fg = theme.MINT if ideal_score.reached else (
+                theme.LAV if pct >= 90 else theme.INK_SUB)
+            tk.Label(line, text="理想まで %.0f%%" % pct, bg=theme.CARD, fg=fg,
+                     font=theme.F.get("cute_b")).pack(side="left")
+            if ideal_score.short:
+                tk.Label(line,
+                         text="足りない: " + "、".join(
+                             i.text for i in ideal_score.short[:4]),
+                         bg=theme.CARD, fg=theme.INK_SUB,
+                         font=theme.F.get("small")).pack(side="left", padx=10)
 
         # 名前 (コピーしたもの)
         if name_text:

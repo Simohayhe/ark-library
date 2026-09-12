@@ -3,7 +3,8 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from arklib import ark, breeding, colors as arkcolors, stats
+from arklib import (ark, breeding, colors as arkcolors, ideal as arkideal,
+                    naming, stats)
 from arklib.creature import (FEMALE, MALE, STATUS_ALIVE, STATUS_CRYO,
                              STATUS_DEAD, STATUS_JA, STATUS_OBELISK)
 
@@ -85,6 +86,8 @@ class LibraryPage(tk.Frame):
                                           kind="primary", bg=theme.BG)
         self.plan_btn.pack(side="right", padx=3)
         theme.RoundButton(right, "名前の付け方", self._naming_dialog, kind="soft",
+                          bg=theme.BG).pack(side="right", padx=3)
+        theme.RoundButton(right, "理想個体", self._ideal_dialog, kind="soft",
                           bg=theme.BG).pack(side="right", padx=3)
 
         bar = tk.Frame(self, bg=theme.BG)
@@ -186,6 +189,11 @@ class LibraryPage(tk.Frame):
 
     def _select_species(self, bp):
         self.species_bp = bp
+        # 外から種族を切り替えたときも左のリストの選択を合わせる
+        bps = getattr(self, "_species_bps", [])
+        if bp in bps:
+            self.species_list.selection_clear(0, "end")
+            self.species_list.selection_set(bps.index(bp))
         self.species = self.st.species_db.by_bp(bp)
         self.creatures = self.st.library.by_species(
             bp, None, self.include_dead.get())
@@ -195,6 +203,9 @@ class LibraryPage(tk.Frame):
             self._fill_table()
             return
         self.stat_list = stat_columns(self.species)
+        # 理想個体 (狙っている姿)。決めてあれば「あと何 %」を出す
+        self.ideal = arkideal.load(self.st.library, bp)
+        self.ideal_refs = arkideal.refs_from(self.creatures, self.stat_list)
         # 交配プランで決めた狙い方 (ゼロ狙いなど) に合わせて光らせる
         self.goals = self._goals_for(self.stat_list)
         self.tops = breeding.target_levels(self.creatures, self.goals,
@@ -230,9 +241,17 @@ class LibraryPage(tk.Frame):
                         "↓" if self.goals.get(s) == breeding.MIN else "")
             for s, lv in sorted(self.tops.items()))
         done = len(info["complete"])
-        self.tops_label.configure(
-            text="%s: %s%s" % ("目標" if has_min else "最高値", tops_text,
-                               ("  ★完成個体 %d体" % done) if done else ""))
+        text = "%s: %s%s" % ("目標" if has_min else "最高値", tops_text,
+                             ("  ★完成個体 %d体" % done) if done else "")
+        idl = getattr(self, "ideal", None)
+        if idl is not None and not idl.empty:
+            ranked = arkideal.rank(self.creatures, idl, self.ideal_refs,
+                                   self.species_bp)
+            if ranked:
+                sc, c = ranked[0]
+                text += "   理想に一番近い: %s %.0f%%" % (c.display_name,
+                                                         sc.percent)
+        self.tops_label.configure(text=text)
 
     # ---- 表 ------------------------------------------------------------
 
@@ -257,6 +276,10 @@ class LibraryPage(tk.Frame):
                             arkcolors.region_name(self.species_bp, i)[:4],
                             46, align="center",
                             sort_key=lambda r, k="c%d" % i: r.get("_" + k, 0)))
+        if getattr(self, "ideal", None) is not None and not self.ideal.empty:
+            cols.append(Col("ideal", "理想", 56, align="e",
+                            sort_key=lambda r: r.get("_ideal", -1),
+                            tooltip="理想個体にどれだけ近いか"))
         cols += [Col("mut", "変異", 42, align="e", numeric=True),
                  Col("imp", "刷込", 46, align="e"),
                  Col("state", "種別", 52, align="center"),
@@ -266,6 +289,7 @@ class LibraryPage(tk.Frame):
         self.table = Table(self.table_holder, cols, on_select=self._on_row,
                            on_activate=lambda r: self._open_detail(),
                            cell_style=self._cell_style, row_style=self._row_style,
+                           on_row_menu=self._row_menu,
                            bg=theme.CARD, min_rows=10)
         self.table.pack(fill="both", expand=True)
         self.table.sort_key = "base"
@@ -296,6 +320,12 @@ class LibraryPage(tk.Frame):
                 cid = c.colors[i] if i < len(c.colors) else 0
                 row["c%d" % i] = str(cid) if cid else ""
                 row["_c%d" % i] = cid
+            idl = getattr(self, "ideal", None)
+            if idl is not None and not idl.empty:
+                sc = idl.score(c, self.ideal_refs, self.species_bp)
+                row["ideal"] = "%.0f%%" % sc.percent
+                row["_ideal"] = sc.percent
+                row["_score"] = sc
             for s in getattr(self, "stat_list", []):
                 if self.show_values.get():
                     row["s%d" % s] = stats.format_value(s, c.values[s]) \
@@ -309,6 +339,15 @@ class LibraryPage(tk.Frame):
             self.table._redraw()
 
     def _cell_style(self, row, key):
+        if key == "ideal":
+            sc = row.get("_score")
+            if sc is None:
+                return None
+            if sc.reached:
+                return (theme.MINT, theme.ON_ACCENT, True)
+            if sc.percent >= 90:
+                return (theme.FIELD, theme.MINT, True)
+            return None
         if key.startswith("c") and key[1:].isdigit():
             cid = row.get("_" + key) or 0
             bg = arkcolors.hex_of(cid) if cid else None
@@ -358,8 +397,6 @@ class LibraryPage(tk.Frame):
             return
         if self.plan_open and self.plan_page is not None:
             self.plan_page.set_focus(c)
-            if self.plan_page.tab not in ("partner",):
-                pass          # ほかのタブを見ている最中なら邪魔しない
         parts = []
         if c.ambiguous:
             parts.append("⚠ 表示値だけではレベルの内訳が一つに決まらなかった個体")
@@ -372,6 +409,10 @@ class LibraryPage(tk.Frame):
                                c.levels_wild[s], c.levels_mut[s], c.levels_dom[s]))
         if vals:
             parts.append("  ".join(vals))
+        idl = getattr(self, "ideal", None)
+        if idl is not None and not idl.empty:
+            parts.append("理想個体: " + idl.score(
+                c, self.ideal_refs, self.species_bp).summary())
         lineage = []
         if c.father_name or c.mother_name:
             lineage.append("父 %s / 母 %s" % (c.father_name or "?", c.mother_name or "?"))
@@ -381,6 +422,79 @@ class LibraryPage(tk.Frame):
         if lineage:
             parts.append("  ".join(lineage))
         self.detail.configure(text="\n".join(parts))
+
+    def _row_menu(self, row, event):
+        """行を右クリックしたときの小さなメニュー。"""
+        m = self._build_row_menu(row)
+        if m is None:
+            return
+        try:
+            m.tk_popup(event.x_root, event.y_root)
+        finally:
+            m.grab_release()
+
+    def _build_row_menu(self, row):
+        c = row.get("_obj")
+        if c is None:
+            return None
+        m = tk.Menu(self, tearoff=0, bg=theme.CARD, fg=theme.INK,
+                    activebackground=theme.PINK,
+                    activeforeground=theme.ON_ACCENT,
+                    font=theme.F.get("ui"), bd=0)
+        m.add_command(label="詳細を見る", command=self._open_detail)
+        m.add_separator()
+        m.add_command(label="ステータスを編集…", command=self._edit_stats)
+        m.add_command(label="色を編集…", command=self._edit_colors)
+        m.add_command(label="状態を変える…", command=self._change_status)
+        m.add_separator()
+        m.add_command(label="この個体を理想個体にする", command=self._set_as_ideal)
+        m.add_command(label="名前をコピー", command=self._copy_name)
+        m.add_separator()
+        m.add_command(label="削除", command=self._delete)
+        return m
+
+    def _edit_stats(self):
+        c = self._selected()
+        if c is None:
+            return
+        from .edit_dialog import StatEditDialog
+        StatEditDialog(self, self.app, c, on_done=self._after_change)
+
+    def _edit_colors(self):
+        c = self._selected()
+        if c is None:
+            return
+        from .edit_dialog import ColorEditDialog
+        ColorEditDialog(self, self.app, c, on_done=self._after_change)
+
+    def _set_as_ideal(self):
+        """選んだ個体をそのまま目標にする。"""
+        c = self._selected()
+        if c is None:
+            return
+        regions = self._color_regions()
+        idl = arkideal.Ideal.from_creature(c, self.stat_list, regions)
+        arkideal.save(self.st.library, self.species_bp, idl)
+        self._after_change()
+        messagebox.showinfo(
+            "理想個体",
+            "%s を理想個体にしました。\n\n%s"
+            % (c.display_name, idl.describe(self.species_bp)), parent=self)
+
+    def _copy_name(self):
+        """ゲーム内に貼る名前をクリップボードへ。"""
+        c = self._selected()
+        if c is None:
+            return
+        auto = self.app.autoimport
+        text = naming.make_name(
+            c, auto.naming_stats(self.species_bp),
+            bool(auto.get("naming_with_sex")),
+            mutation_mark=auto.get("naming_mutation_mark") or "",
+            mode=auto.get("naming_mode") or naming.MODE_ALL)
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self.detail.configure(text="クリップボードにコピーしました:  %s" % text)
 
     def _selected(self):
         if self.table is None:
@@ -459,6 +573,19 @@ class LibraryPage(tk.Frame):
         if self.species_bp:
             self.plan_page.select_species(self.species_bp)
         self.plan_page.set_focus(self.table.selected_obj() if self.table else None)
+
+    def _ideal_dialog(self):
+        """狙っている個体の姿を決める。"""
+        if self.species is None:
+            messagebox.showinfo("ARK ライブラリ", "先に種族を選んでください。",
+                                parent=self)
+            return
+        from .ideal_dialog import IdealDialog
+        IdealDialog(self, self.app, self.species_bp,
+                    self.species.display_name, self.stat_list,
+                    creatures=self.creatures,
+                    selected=self.table.selected_obj() if self.table else None,
+                    on_done=self._after_change)
 
     def _naming_dialog(self):
         """この種族だけ、名前に入れるステータスを変える。"""

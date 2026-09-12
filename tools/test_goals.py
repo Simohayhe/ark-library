@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from arklib import ark, breeding, colors, naming, records
+from arklib import ark, breeding, colors, ideal, naming, records
 from arklib.creature import FEMALE, GENDERLESS, MALE, Creature
 
 PASS, FAIL = [], []
@@ -191,6 +191,64 @@ def main():
     dead = mk("U4", GENDERLESS)
     dead.status = "dead"
     check("8.12 死亡は除く", breeding.can_mate(u1, dead), False)
+
+    print("\n[9] 理想個体 (目標) までの近さ")
+    OX, ME2 = ark.OXYGEN, ark.MELEE
+    idl = ideal.Ideal({ark.HEALTH: 50, ME2: 40, OX: 0}, {0: 14})
+    perfect = mk("完璧", MALE, hp=50, me=40, ox=0, color=[14])
+    half = mk("半分", FEMALE, hp=25, me=40, ox=10, color=[6])
+    pool = [perfect, half]
+    refs = ideal.refs_from(pool)
+    check("9.1 目標どおりなら 100%", idl.score(perfect, refs).percent, 100.0)
+    check("9.2 届いていれば達成", idl.score(perfect, refs).reached, True)
+    near("9.3 半分だと下がる", idl.score(half, refs).percent, 37.5)
+    check("9.4 足りない項目が分かる",
+          sorted(i.label for i in idl.score(half, refs).short),
+          sorted(["体力", "酸素", "領域0"]))
+    check("9.5 近い順に並ぶ",
+          [c.display_name for _s, c in ideal.rank(pool, idl, refs)],
+          ["完璧", "半分"])
+
+    # ステータスは遠いほど % が低い
+    far = mk("遠い", MALE, hp=10, me=10, ox=10, color=[14])
+    mid = mk("中くらい", MALE, hp=40, me=30, ox=5, color=[14])
+    check("9.6 遠いほど低い",
+          idl.score(far, refs).percent < idl.score(mid, refs).percent, True)
+    check("9.7 目標を超えても 100% 止まり",
+          idl.score(mk("超え", MALE, hp=99, me=99, ox=0, color=[14]),
+                    refs).percent, 100.0)
+
+    # 色は合っているかどうかだけ (近い色という考え方は無い)
+    wrong = mk("色違い", MALE, hp=50, me=40, ox=0, color=[15])
+    sc = idl.score(wrong, refs)
+    check("9.8 色が違えばその項目は 0",
+          [i.score for i in sc.items if i.kind == ideal.KIND_COLOR], [0.0])
+    check("9.9 ステだけ満点なら 75%", round(sc.percent), 75)
+
+    # ゼロ狙いは「群れでいちばん悪い値」を基準に下がる
+    zero = ideal.Ideal({OX: 0})
+    check("9.10 0 なら満点", zero.score(perfect, {OX: 20}).percent, 100.0)
+    near("9.11 半分まで下げたら 50%", zero.score(half, {OX: 20}).percent, 50.0)
+
+    # 子の評価は色を数えない
+    sc2 = idl.score_levels({ark.HEALTH: 50, ME2: 40, OX: 0}, stats_only=True)
+    check("9.12 子はステだけで見る", len(sc2.items), 3)
+    check("9.13 子が理想どおり", sc2.reached, True)
+
+    # 個体から理想を作る / 保存して読み戻す
+    from_c = ideal.Ideal.from_creature(perfect, [ark.HEALTH, ME2, OX], [0])
+    check("9.14 個体から作れる", from_c.stats[ark.HEALTH], 50)
+    check("9.15 色も拾う", from_c.colors[0], 14)
+    lib2 = Library(os.path.join(tempfile.mkdtemp(prefix="ideal_"), "lib.db"))
+    ideal.save(lib2, "bp/Rex", from_c)
+    back = ideal.load(lib2, "bp/Rex")
+    check("9.16 保存して読み戻せる", back.to_dict(), from_c.to_dict())
+    check("9.17 素レベルが出る", back.base_level(), 91)
+    ideal.save(lib2, "bp/Rex", None)
+    check("9.18 消せる", ideal.load(lib2, "bp/Rex").empty, True)
+    check("9.19 決めていなければ 0 件",
+          ideal.rank(pool, ideal.Ideal(), refs), [])
+    lib2.close()
 
     print("\n" + "=" * 66)
     print("%d 件成功 / %d 件失敗" % (len(PASS), len(FAIL)))

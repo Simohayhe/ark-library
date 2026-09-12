@@ -11,14 +11,15 @@ from tkinter import ttk
 
 from arklib import ark, breeding
 from arklib import colors as arkcolors
+from arklib import ideal as arkideal
 from arklib.creature import MUTATION_LIMIT
 
 from . import theme
 from .page_library import SHORT_JA, stat_columns
 from .table import Col, Table
 
-TABS = [("partner", "この個体の相手"), ("pairs", "おすすめペア"),
-        ("plan", "仕上げの手順"), ("mutation", "変異狙い"), ("color", "色")]
+TABS = [("pairs", "おすすめペア"), ("plan", "仕上げの手順"),
+        ("mutation", "変異狙い"), ("color", "色")]
 
 # 狙い方のプリセット。ステータスごとに 最高(MAX) / ゼロ(MIN) / 無視(None)
 PRESETS = [
@@ -39,10 +40,12 @@ class PlanPage(tk.Frame):
         self.focus_creature = None
         self.species_bp = None
         self.species = None
-        self.tab = "partner" if embedded else "pairs"
+        self.tab = "pairs"
         self.stat_vars = {}
         self.species_var = tk.StringVar()
         self.include_tamed = tk.BooleanVar(value=True)
+        # 「選んだ個体を含むペアだけ」に絞るか
+        self.only_focus = tk.BooleanVar(value=False)
 
         self._build()
         self.reload()
@@ -98,8 +101,6 @@ class PlanPage(tk.Frame):
         self.color_holder = tk.Frame(self.content, bg=theme.BG)
         self.color_table = None
         self.color_targets = {}      # 領域番号 -> 狙う色 ID
-        self.partner_holder = tk.Frame(self.content, bg=theme.CARD)
-        self.partner_table = None
 
         self.plan_text = tk.Text(self.plan_holder, bg=theme.CARD, fg=theme.INK,
                                  bd=0, highlightthickness=0, wrap="word",
@@ -125,10 +126,10 @@ class PlanPage(tk.Frame):
         for k, b in self._tab_buttons.items():
             b.set_active(k == key)
         for f in (self.pair_holder, self.plan_holder, self.mut_holder,
-                  self.color_holder, self.partner_holder):
+                  self.color_holder):
             f.pack_forget()
-        {"partner": self.partner_holder, "pairs": self.pair_holder,
-         "plan": self.plan_holder, "mutation": self.mut_holder,
+        {"pairs": self.pair_holder, "plan": self.plan_holder,
+         "mutation": self.mut_holder,
          "color": self.color_holder}[key].pack(fill="both", expand=True)
 
     # ---- データ --------------------------------------------------------
@@ -168,12 +169,12 @@ class PlanPage(tk.Frame):
             self._select(bp)
 
     def set_focus(self, creature):
-        """「この個体の相手」を探す対象を決める。"""
+        """一覧で選ばれた個体。おすすめペアの絞り込みと強調に使う。"""
         self.focus_creature = creature
         if creature is not None and creature.species_bp != self.species_bp:
             self._select(creature.species_bp)
-        else:
-            self._fill_partner()
+        elif self.pair_table is not None:
+            self._refill_pairs()
         self._update_focus_label()
 
     def _update_focus_label(self):
@@ -181,12 +182,12 @@ class PlanPage(tk.Frame):
             return
         c = self.focus_creature
         if c is None:
-            self.focus_label.configure(text="交配計画  (一覧で個体を選ぶと相手を探します)")
+            self.focus_label.configure(text="交配計画")
         else:
             extra = ("  (この種族は性別が無いので、どの個体とも組めます)"
                      if c.is_genderless else "")
             self.focus_label.configure(
-                text="交配計画  %s %s の相手を探しています%s"
+                text="交配計画  選択中: %s %s%s"
                      % (c.sex_ja, c.display_name, extra))
 
     def _on_species(self):
@@ -325,91 +326,35 @@ class PlanPage(tk.Frame):
                 c.display_name for c in done[:3])
         self.goal.configure(text=goal)
 
-        self._fill_partner(pool, tops)
         self._fill_pairs(pool, stat_list, tops)
         self._fill_plan(pool, stat_list, tops, done)
         self._fill_mutation(pool, stat_list, tops)
         self._fill_color()
 
-    # ---- この個体の相手 ------------------------------------------------
-
-    def _fill_partner(self, pool=None, tops=None):
-        """選んだ個体に合う相手を並べる。"""
-        if self.partner_table is None:
-            cols = [Col("who", "相手", 160),
-                    Col("sex", "性別", 44, align="center"),
-                    Col("tops", "目標達成", 70, align="e",
-                        sort_key=lambda r: r.get("_tops", 0)),
-                    Col("best", "最良の子", 72, align="e", numeric=True),
-                    Col("exp", "期待Lv", 66, align="e", numeric=True),
-                    Col("prob", "当たり率", 70, align="e",
-                        sort_key=lambda r: r.get("_prob", 0)),
-                    Col("eggs", "平均何匹", 72, align="e",
-                        sort_key=lambda r: -r.get("_eggs", 0)),
-                    Col("mut", "変異率", 60, align="e",
-                        sort_key=lambda r: r.get("_mut", 0)),
-                    Col("diff", "分かれ目", 200)]
-            self.partner_table = Table(self.partner_holder, cols, bg=theme.CARD,
-                                       min_rows=8)
-            self.partner_table.pack(fill="both", expand=True)
-
-        me = self.focus_creature
-        if me is None or self.species is None:
-            self.partner_table.set_rows(
-                [{"who": "一覧で個体を選んでから「交配計画」を押してください"}],
-                keep_sort=False)
-            return
-        if pool is None:
-            pool = [c for c in getattr(self, "creatures", []) if c.can_breed()]
-        goals = getattr(self, "goals", None) or self._goals()
-        if tops is None:
-            tops = breeding.target_levels(pool, goals)
-
-        if not me.can_breed():
-            self.partner_table.set_rows(
-                [{"who": "%s は交配に使えません (去勢・死亡・性別不明)"
-                  % me.display_name}], keep_sort=False)
-            return
-
-        rows = []
-        for other in pool:
-            if not breeding.can_mate(me, other, self.st.species_db):
-                continue
-            m, f = breeding.order_pair(me, other)
-            p = breeding.PairPlan(m, f, tops, goals=goals)
-            rows.append({
-                "_obj": p,
-                "who": other.display_name,
-                "sex": other.sex_ja,
-                "tops": "%d/%d" % (p.top_count, len(tops)),
-                "best": p.best_child_level,
-                "exp": round(p.expected_level, 1),
-                "prob": "%.1f%%" % (p.probability * 100),
-                "eggs": "%.0f 匹" % p.eggs_needed if p.eggs_needed < 1e6 else "-",
-                "mut": "%.1f%%" % (p.mutation_probability * 100),
-                "diff": "・".join(SHORT_JA.get(s, ark.NAMES_JA[s])
-                                  for s in p.needed) or "両親とも同じ",
-                "_tops": p.top_count, "_prob": p.probability,
-                "_eggs": p.eggs_needed, "_mut": p.mutation_probability,
-            })
-        if not rows:
-            self.partner_table.set_rows(
-                [{"who": "掛け合わせられる相手が他にいません"
-                         if me.is_genderless else
-                         "掛け合わせられる相手がいません (異性・生存・去勢なし)"}],
-                keep_sort=False)
-            return
-        self.partner_table.set_rows(rows, keep_sort=False)
-        self.partner_table.sort_by("tops", desc=True)
-
     # ---- おすすめペア --------------------------------------------------
 
     def _fill_pairs(self, pool, stat_list, tops):
         if self.pair_table is None:
+            bar = tk.Frame(self.pair_holder, bg=theme.CARD)
+            bar.pack(fill="x", padx=10, pady=(8, 0))
+            tk.Checkbutton(bar, text="選んだ個体を含むペアだけ",
+                           variable=self.only_focus, command=self._refill_pairs,
+                           bg=theme.CARD, fg=theme.INK, selectcolor=theme.FIELD,
+                           activebackground=theme.CARD, activeforeground=theme.INK,
+                           font=theme.F.get("small"), bd=0,
+                           highlightthickness=0).pack(side="left")
+            self.pair_note = tk.Label(bar, text="", bg=theme.CARD,
+                                      fg=theme.INK_SUB,
+                                      font=theme.F.get("small"))
+            self.pair_note.pack(side="left", padx=10)
+
             cols = [Col("male", "♂ オス", 150),
                     Col("female", "♀ メス", 150),
                     Col("tops", "目標達成", 70, align="e",
                         sort_key=lambda r: r.get("_tops", 0)),
+                    Col("ideal", "理想", 56, align="e",
+                        sort_key=lambda r: r.get("_ideal", -1),
+                        tooltip="最良の子が理想個体のステータスにどれだけ届くか"),
                     Col("best", "最良の子", 72, align="e", numeric=True),
                     Col("exp", "期待Lv", 66, align="e", numeric=True),
                     Col("prob", "当たり率", 70, align="e",
@@ -425,10 +370,33 @@ class PlanPage(tk.Frame):
 
         plans = breeding.rank_pairs(pool, tops=tops, goals=self.goals,
                                     species_db=self.st.species_db, limit=60)
+        self._pair_plans = plans
+        self._show_pairs()
+
+    def _refill_pairs(self):
+        """絞り込みと並べ替えだけやり直す (ペアの計算はしない)。"""
+        if self.pair_table is None:
+            return
+        if not hasattr(self, "_pair_plans"):
+            self.recalc()
+            return
+        self._show_pairs()
+
+    def _show_pairs(self):
+        plans = getattr(self, "_pair_plans", [])
+        tops = self.tops
+        me = self.focus_creature
+        idl = arkideal.load(self.st.library, self.species_bp)
+        refs = arkideal.refs_from(getattr(self, "creatures", []))
+        only = bool(self.only_focus.get()) and me is not None
         rows = []
         for p in plans:
-            rows.append({
+            mine = me is not None and me.uid in (p.male.uid, p.female.uid)
+            if only and not mine:
+                continue
+            row = {
                 "_obj": p,
+                "_mine": mine,
                 "male": p.male.display_name,
                 "female": p.female.display_name,
                 "tops": "%d/%d" % (p.top_count, len(tops)),
@@ -443,15 +411,41 @@ class PlanPage(tk.Frame):
                 "_eggs": p.eggs_needed,
                 "_mut": p.mutation_probability,
                 "_tops": p.top_count,
-            })
+            }
+            if not idl.empty:
+                # 子の色は親しだいで決まらないので、ここはステータスだけ見る
+                sc = idl.score_levels(p.best_child, refs=refs, stats_only=True)
+                row["ideal"] = "%.0f%%" % sc.percent
+                row["_ideal"] = sc.percent
+                row["_score"] = sc
+            rows.append(row)
+
+        if idl.empty:
+            note = "「理想個体」を決めると、この子が理想にどれだけ届くかが出ます"
+        elif me is not None and not only:
+            note = "選んだ個体には色が付きます"
+        else:
+            note = ""
+        if getattr(self, "pair_note", None) is not None:
+            self.pair_note.configure(text=note)
         self.pair_table.set_rows(rows, keep_sort=False)
-        # 「目標をいくつ満たせるか」で並べる。ゼロ狙いだとレベルの高い順に
-        # 並べても意味がないので、ここは狙い方に関係なく達成数を先に見る
-        self.pair_table.sort_by("tops", desc=True)
+        # 理想個体を決めているならそこへの近さで、決めていないなら
+        # 「目標をいくつ満たせるか」で並べる
+        self.pair_table.sort_by("ideal" if not idl.empty else "tops", desc=True)
 
     def _pair_cell(self, row, key):
         p = row.get("_obj")
         if p is None:
+            return None
+        me = self.focus_creature
+        if key in ("male", "female") and row.get("_mine") and me is not None:
+            c = p.male if key == "male" else p.female
+            if c.uid == me.uid:
+                return (theme.FIELD, theme.PINK_DK, True)
+        if key == "ideal":
+            sc = row.get("_score")
+            if sc is not None and sc.reached:
+                return (theme.MINT, theme.ON_ACCENT, True)
             return None
         if key == "tops" and p.top_count >= len(self.tops):
             return (theme.PINK, theme.ON_ACCENT, True)
