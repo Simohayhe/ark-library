@@ -108,7 +108,7 @@ class AlertsPage(tk.Frame):
         _check(b2, "作った名前をクリップボードにコピーする", self.name_copy,
                self._save_naming)
         self.name_sex = tk.BooleanVar()
-        _check(b2, "先頭に性別 (M / F) を付ける", self.name_sex, self._save_naming)
+        _check(b2, "先頭に性別 (M / F / U) を付ける", self.name_sex, self._save_naming)
         self.name_fill = tk.BooleanVar()
         _check(b2, "ゲーム内で名前が付いていない個体は、この名前で登録する",
                self.name_fill, self._save_naming)

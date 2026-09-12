@@ -112,6 +112,24 @@ class Library(object):
         self.db.executescript(SCHEMA)
         self.db.commit()
 
+    def fix_genderless(self, species_db):
+        """性別が無い種族の個体を U 表記に直す (古いデータの手当て)。
+
+        以前は「性別不明 (-)」として入れていたので、交配の相手から外れていた。
+        """
+        rows = self.db.execute(
+            "SELECT uid, species_bp FROM creatures WHERE sex = '-'").fetchall()
+        fixed = 0
+        for row in rows:
+            sp = species_db.by_bp(row["species_bp"])
+            if sp is not None and sp.no_gender:
+                self.db.execute("UPDATE creatures SET sex = 'U' WHERE uid = ?",
+                                (row["uid"],))
+                fixed += 1
+        if fixed:
+            self.db.commit()
+        return fixed
+
     def close(self):
         try:
             self.db.close()
@@ -222,6 +240,7 @@ class Library(object):
         sql = ("SELECT species_bp, species_name, COUNT(*) AS n, "
                "SUM(CASE WHEN sex = 'M' THEN 1 ELSE 0 END) AS males, "
                "SUM(CASE WHEN sex = 'F' THEN 1 ELSE 0 END) AS females, "
+               "SUM(CASE WHEN sex = 'U' THEN 1 ELSE 0 END) AS genderless, "
                "SUM(CASE WHEN status = 'dead' THEN 1 ELSE 0 END) AS dead "
                "FROM creatures")
         args = []

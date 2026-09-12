@@ -183,9 +183,11 @@ class PlanPage(tk.Frame):
         if c is None:
             self.focus_label.configure(text="交配計画  (一覧で個体を選ぶと相手を探します)")
         else:
+            extra = ("  (この種族は性別が無いので、どの個体とも組めます)"
+                     if c.is_genderless else "")
             self.focus_label.configure(
-                text="交配計画  %s %s の相手を探しています"
-                     % (c.sex_ja, c.display_name))
+                text="交配計画  %s %s の相手を探しています%s"
+                     % (c.sex_ja, c.display_name, extra))
 
     def _on_species(self):
         names = list(self.species_box.cget("values"))
@@ -373,7 +375,7 @@ class PlanPage(tk.Frame):
         for other in pool:
             if not breeding.can_mate(me, other, self.st.species_db):
                 continue
-            m, f = (me, other) if me.sex == "M" else (other, me)
+            m, f = breeding.order_pair(me, other)
             p = breeding.PairPlan(m, f, tops, goals=goals)
             rows.append({
                 "_obj": p,
@@ -392,7 +394,9 @@ class PlanPage(tk.Frame):
             })
         if not rows:
             self.partner_table.set_rows(
-                [{"who": "掛け合わせられる相手がいません (異性・生存・去勢なし)"}],
+                [{"who": "掛け合わせられる相手が他にいません"
+                         if me.is_genderless else
+                         "掛け合わせられる相手がいません (異性・生存・去勢なし)"}],
                 keep_sort=False)
             return
         self.partner_table.set_rows(rows, keep_sort=False)

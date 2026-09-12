@@ -12,8 +12,8 @@ import os
 import re
 
 from .. import ark, breeding, colors
-from ..creature import (STATE_BRED, STATE_TAMED, STATE_WILD, UNKNOWN_SEX,
-                        Creature)
+from ..creature import (GENDERLESS, STATE_BRED, STATE_TAMED, STATE_WILD,
+                        UNKNOWN_SEX, Creature)
 from . import dino_export_ini, export_gun
 
 SOURCE_INI = "export_ini"
@@ -157,7 +157,7 @@ def _build(res, ec, kind, species_db, sm, library, server, game, parent_lookup,
         species_bp=sp.bp,
         species_name=sp.display_name,
         name=ec.name,
-        sex=UNKNOWN_SEX if sp.no_gender else ec.sex,
+        sex=GENDERLESS if sp.no_gender else ec.sex,
         state=ec.state,
         level=ec.level,
         imprint=ec.imprint,

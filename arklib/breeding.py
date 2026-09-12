@@ -26,8 +26,8 @@ import json
 import math
 
 from . import ark
-from .creature import (BREEDING_STATS, FEMALE, MALE, MUTATION_LIMIT,
-                       STATUS_DEAD, Creature)
+from .creature import (BREEDING_STATS, FEMALE, GENDERLESS, MALE,
+                       MUTATION_LIMIT, STATUS_DEAD, Creature)
 
 # 高い方の親の値を継承する確率 (Ark.cs ProbabilityInheritHigherLevel)
 P_HIGHER = 0.55
@@ -296,10 +296,18 @@ class PairPlan(object):
 
 
 def can_mate(a, b, species_db=None):
-    """交配できる組み合わせか。"""
+    """交配できる組み合わせか。
+
+    メイグアナのように**性別が無い種族**は雌雄で組む必要がないので、
+    同じ種族の生きている個体同士ならどれでも組める扱いにする。
+    """
     if a is b or not a.can_breed() or not b.can_breed():
         return False
-    if {a.sex, b.sex} != {MALE, FEMALE}:
+    if a.sex == GENDERLESS or b.sex == GENDERLESS:
+        # 片方だけ性別なしということは起きない (種族で決まるため)
+        if a.sex != b.sex:
+            return False
+    elif {a.sex, b.sex} != {MALE, FEMALE}:
         return False
     if a.species_bp == b.species_bp:
         return True
@@ -311,6 +319,19 @@ def can_mate(a, b, species_db=None):
     return False
 
 
+def iter_pairs(pool, species_db=None):
+    """組める 2 匹をすべて返す。(オス, メス) の順。
+
+    性別が無い種族は順番に意味がないので、名前順で揃えておく。
+    """
+    n = len(pool)
+    for i in range(n):
+        for j in range(i + 1, n):
+            a, b = pool[i], pool[j]
+            if can_mate(a, b, species_db):
+                yield order_pair(a, b)
+
+
 def rank_pairs(creatures, stat_list=None, weights=None, tops=None,
                species_db=None, limit=30, require_top=0, goals=None):
     """全ペアを評価して良い順に返す。"""
@@ -319,17 +340,12 @@ def rank_pairs(creatures, stat_list=None, weights=None, tops=None,
     pool = [c for c in creatures if c.can_breed() and c.status != STATUS_DEAD]
     tops = tops if tops is not None else target_levels(pool, goals)
 
-    males = [c for c in pool if c.sex == MALE]
-    females = [c for c in pool if c.sex == FEMALE]
     plans = []
-    for m in males:
-        for f in females:
-            if not can_mate(m, f, species_db):
-                continue
-            p = PairPlan(m, f, tops, goals=goals)
-            if p.top_count < require_top:
-                continue
-            plans.append(p)
+    for m, f in iter_pairs(pool, species_db):
+        p = PairPlan(m, f, tops, goals=goals)
+        if p.top_count < require_top:
+            continue
+        plans.append(p)
     plans.sort(key=lambda p: p.score(weights), reverse=True)
     return plans[:limit] if limit else plans
 
@@ -414,7 +430,7 @@ def plan_to_best(creatures, stat_list=None, species_db=None, max_generations=8,
             if used[i] or used[j]:
                 continue
             a, b = current[i], current[j]
-            m, f = _as_male_female(a, b)
+            m, f = order_pair(a, b)
             pair = PairPlan(m, f, tops, goals=goals)
             child_levels = dict(pair.best_child)
             label = "第%d世代の子%d" % (generation, len(nxt) + 1)
@@ -465,7 +481,10 @@ def _pairing_order(pool, tops, stat_list, species_db, goals=None):
     return [(i, j) for _k, i, j in scored]
 
 
-def _as_male_female(a, b):
+def order_pair(a, b):
+    """(オス, メス) の順に並べ替える。性別が無い種族は名前順で揃える。"""
+    if a.sex == GENDERLESS and b.sex == GENDERLESS:
+        return (a, b) if a.display_name <= b.display_name else (b, a)
     if a.sex == MALE or b.sex == FEMALE:
         return a, b
     return b, a
@@ -487,14 +506,11 @@ def mutation_pairs(creatures, stat_list=None, tops=None, species_db=None,
     pool = [c for c in creatures if c.can_breed() and c.status != STATUS_DEAD]
     tops = tops if tops is not None else target_levels(pool, goals)
     out = []
-    for m in [c for c in pool if c.sex == MALE]:
-        for f in [c for c in pool if c.sex == FEMALE]:
-            if not can_mate(m, f, species_db):
-                continue
-            p = PairPlan(m, f, tops, goals=goals)
-            if p.mutation_probability <= 0:
-                continue
-            out.append(p)
+    for m, f in iter_pairs(pool, species_db):
+        p = PairPlan(m, f, tops, goals=goals)
+        if p.mutation_probability <= 0:
+            continue
+        out.append(p)
     # 変異確率 → 完成度 → 食い違いの少なさ の順
     out.sort(key=lambda p: (p.mutation_probability, p.top_count, -len(p.differing)),
              reverse=True)
@@ -566,6 +582,7 @@ def library_summary(creatures, stat_list=None, goals=None):
         "count": len(pool),
         "males": sum(1 for c in pool if c.sex == MALE),
         "females": sum(1 for c in pool if c.sex == FEMALE),
+        "genderless": sum(1 for c in pool if c.sex == GENDERLESS),
         "tops": tops,
         "best_possible_level": best_possible,
         "complete": have_all,
@@ -668,13 +685,10 @@ def rank_color_pairs(creatures, targets, species_db=None, limit=40,
     """狙った色が出しやすいペアを良い順に返す。"""
     pool = [c for c in creatures if c.can_breed() and c.status != STATUS_DEAD]
     out = []
-    for m in [c for c in pool if c.sex == MALE]:
-        for f in [c for c in pool if c.sex == FEMALE]:
-            if not can_mate(m, f, species_db):
-                continue
-            cp = ColorPair(m, f, targets)
-            if cp.possible or include_impossible:
-                out.append(cp)
+    for m, f in iter_pairs(pool, species_db):
+        cp = ColorPair(m, f, targets)
+        if cp.possible or include_impossible:
+            out.append(cp)
     out.sort(key=lambda p: (p.probability, -len(p.risky_regions)), reverse=True)
     return out[:limit] if limit else out
 

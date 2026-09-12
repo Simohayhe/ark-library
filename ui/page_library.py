@@ -16,6 +16,17 @@ def stat_columns(species):
     return out
 
 
+def _sex_text(row):
+    """頭数の内訳。性別が無い種族は U でまとめる。"""
+    u = row.get("genderless") or 0
+    if u and not (row.get("males") or row.get("females")):
+        return "U%d" % u
+    text = "♂%d ♀%d" % (row.get("males") or 0, row.get("females") or 0)
+    if u:
+        text += " U%d" % u
+    return text
+
+
 def _ink_on(hex_color):
     """塗った色の上で読める文字色を選ぶ (明るい色なら黒、暗い色なら白)。"""
     r = int(hex_color[1:3], 16)
@@ -149,8 +160,8 @@ class LibraryPage(tk.Frame):
         for row in summary:
             self._species_bps.append(row["species_bp"])
             self.species_list.insert(
-                "end", " %s  %d体 (♂%d ♀%d)"
-                % (row["species_name"], row["n"], row["males"], row["females"]))
+                "end", " %s  %d体 (%s)"
+                % (row["species_name"], row["n"], _sex_text(row)))
         if not summary:
             self.species_bp = None
             self.species = None
@@ -210,9 +221,9 @@ class LibraryPage(tk.Frame):
         info = breeding.library_summary(self.creatures, goals=self.goals)
         has_min = any(g == breeding.MIN for g in self.goals.values())
         self.sub.configure(
-            text="%s: %d体 (♂%d ♀%d) / %sを全部集めると 素Lv%d"
-            % (self.species.display_name, info["count"], info["males"],
-               info["females"], "狙った値" if has_min else "最高ステ",
+            text="%s: %d体 (%s) / %sを全部集めると 素Lv%d"
+            % (self.species.display_name, info["count"], _sex_text(info),
+               "狙った値" if has_min else "最高ステ",
                info["best_possible_level"]))
         tops_text = " ".join(
             "%s%d%s" % (SHORT_JA.get(s, ark.NAMES_JA[s]), lv,

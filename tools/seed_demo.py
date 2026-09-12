@@ -13,7 +13,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from arklib import ark, colors, paths, stats
-from arklib.creature import FEMALE, MALE, STATUS_CRYO, STATUS_DEAD, Creature
+from arklib.creature import (FEMALE, GENDERLESS, MALE, STATUS_CRYO,
+                             STATUS_DEAD, Creature)
 from arklib.library import Library
 from arklib.multipliers import ServerMultipliers
 from arklib.species import SpeciesDB
@@ -55,14 +56,19 @@ def main():
 
     rnd = random.Random(7)
     total = 0
-    for species_name, count in (("Rex", 14), ("Argentavis", 8), ("Pyromane", 3)):
+    # メイグアナは性別が無い種族 (U)。交配表が出るかの確認用に入れておく
+    for species_name, count in (("Rex", 14), ("Argentavis", 8),
+                                ("Pyromane", 3), ("Maeguana", 4)):
         sp = db.get(species_name)
         if sp is None:
             continue
         breed_stats = [s for s in sp.displayed_stat_indices() if s != ark.TORPIDITY]
         for i in range(count):
-            sex = MALE if i % 2 == 0 else FEMALE
-            name = (NAMES_M if sex == MALE else NAMES_F)[i % 9]
+            if sp.no_gender:
+                sex = GENDERLESS
+            else:
+                sex = MALE if i % 2 == 0 else FEMALE
+            name = (NAMES_F if sex == FEMALE else NAMES_M)[i % 9]
             lw = [0] * ark.STATS_COUNT
             lm = [0] * ark.STATS_COUNT
             ld = [0] * ark.STATS_COUNT

@@ -35,6 +35,11 @@ class AppState(object):
         self.multipliers = ServerMultipliers.official("asa")
         self.game = "asa"
         self._load_server()
+        # 古いデータの手当て: 性別が無い種族を U 表記にする
+        try:
+            self.library.fix_genderless(self.species_db)
+        except Exception:
+            pass
 
     def _load_server(self):
         prof = None

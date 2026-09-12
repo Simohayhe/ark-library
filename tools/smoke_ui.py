@@ -49,6 +49,31 @@ step("個体を選ぶと相手を探す",
      lambda: (lib_page.table.select_by(lambda r: True), app.update(),
               _check(lib_page.plan_page.focus_creature is not None,
                      "対象が渡っていない")))
+
+def genderless_plan():
+    """性別が無い種族 (メイグアナ) でも交配の相手が出るか。"""
+    bps = [r["species_bp"] for r in lib_page._summary
+           if (app.state_obj.species_db.by_bp(r["species_bp"]) or None)
+           and app.state_obj.species_db.by_bp(r["species_bp"]).no_gender]
+    if not bps:
+        print("       (性別なしの個体が居ないので飛ばします)")
+        return
+    lib_page._select_species(bps[0])
+    app.update()
+    lib_page.table.select_by(lambda r: True)
+    app.update()
+    c = lib_page.plan_page.focus_creature
+    _check(c is not None and c.is_genderless, "U の個体が渡っていない")
+    lib_page.plan_page._set_tab("partner")
+    lib_page.plan_page.recalc()
+    app.update()
+    rows = lib_page.plan_page.partner_table.rows
+    _check(any(r.get("_obj") is not None for r in rows),
+           "交配の相手が 1 件も出ない")
+
+
+step("性別なし種族の交配表", genderless_plan)
+
 step("交配計画を閉じる", lambda: (lib_page._toggle_plan(), app.update(),
                                   _check(not lib_page.plan_open, "閉じない")))
 

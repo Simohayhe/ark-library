@@ -15,7 +15,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from arklib import ark, breeding, stats
-from arklib.creature import FEMALE, MALE, Creature
+from arklib.creature import FEMALE, GENDERLESS, MALE, Creature
 from arklib.importers import dino_export_ini, export_gun, import_file
 from arklib.library import Library
 from arklib.multipliers import ServerMultipliers
@@ -313,6 +313,10 @@ def main():
     check("6.2 他は変異なし", sum(mlm) - mlm[ark.HEALTH], 0)
     print("       " + " / ".join(notes))
 
+    # ---- [7] 性別が無い種族 -----------------------------------------
+    print("\n[7] 性別が無い種族 (メイグアナ)")
+    _genderless_check(db, sm, tmp)
+
     print("\n" + "=" * 66)
     print("%d 件成功 / %d 件失敗" % (len(PASS), len(FAIL)))
     if FAIL:
@@ -410,6 +414,63 @@ def _leveled_tamed_check(db, sm, rex, tmp):
     r = import_file(make({ark.HEALTH: 15, ark.MELEE: 15}, "初見",
                          ark_id=(777, 888)), db, sm, library=lib, server="t")
     check("3.7.4 初見でも強化 30 なら読める", r.ok, True)
+    lib.close()
+
+
+MAEGUANA_BP = "/Game/ASA/Dinos/Maelizard/Maelizard_Character_BP.Maelizard_Character_BP"
+
+
+def _genderless_check(db, sm, tmp):
+    """メイグアナのような雌雄の無い種族は U として取り込む。
+
+    ARK のエクスポートは bIsFemale=False と書いてくるので、そのまま読むと
+    全部オスになり、交配の相手が 1 体も出なくなる。
+    """
+    sp = db.by_bp(MAEGUANA_BP)
+    if sp is None:
+        print("  -- メイグアナが種族DBに無いので飛ばします")
+        return
+    check("7.1 性別の無い種族と分かる", sp.no_gender, True)
+    lw = [0] * 12
+    lw[ark.HEALTH] = 30
+    lw[ark.MELEE] = 25
+    lib = Library(os.path.join(tmp, "genderless.db"))
+    uids = []
+    for i, (name, hp, me) in enumerate([("メイ1", 30, 25), ("メイ2", 12, 44)]):
+        lw[ark.HEALTH], lw[ark.MELEE] = hp, me
+        text = make_export_ini(sp, sm, lw, [0] * 12, 1 + hp + me, state="bred",
+                               name=name, sex=MALE,
+                               ark_id=(500 + i, 600 + i))
+        p = os.path.join(tmp, "Maeguana_%d.ini" % i)
+        with io.open(p, "w", encoding="utf-8") as f:
+            f.write(text)
+        r = import_file(p, db, sm, library=lib, server="Astraeos")
+        check("7.%d 取り込み成功 (%s)" % (2 + i, name), r.ok, True)
+        if not r.ok:
+            print("      " + " / ".join(r.problems))
+            lib.close()
+            return
+        check("7.%d 性別は U" % (4 + i), r.creature.sex, GENDERLESS)
+        uids.append(r.creature.uid)
+
+    pool = lib.all_creatures()
+    pairs = breeding.rank_pairs(pool, stat_list=[ark.HEALTH, ark.MELEE],
+                                species_db=db)
+    check("7.6 交配表ができる", len(pairs), 1)
+    check("7.7 頭数は U でまとめる",
+          lib.species_summary()[0]["genderless"], 2)
+
+    # 古いデータ (性別不明 '-' で入っていたもの) を直せるか
+    lib.db.execute("UPDATE creatures SET sex = '-'")
+    lib.db.commit()
+    check("7.8 直す前は交配できない",
+          len(breeding.rank_pairs(lib.all_creatures(), stat_list=[ark.HEALTH],
+                                  species_db=db)), 0)
+    check("7.9 移行で 2 体直る", lib.fix_genderless(db), 2)
+    check("7.10 直ったら交配できる",
+          len(breeding.rank_pairs(lib.all_creatures(), stat_list=[ark.HEALTH],
+                                  species_db=db)), 1)
+    check("7.11 二度目は何もしない", lib.fix_genderless(db), 0)
     lib.close()
 
 

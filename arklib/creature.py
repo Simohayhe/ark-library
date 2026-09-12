@@ -18,9 +18,12 @@ from . import ark
 
 MALE = "M"
 FEMALE = "F"
+# 性別を持たない種族 (メイグアナ・アカティナなど)。ARK 側に雌雄の区別が無い。
+# 「まだ分からない」ではなく「そもそも無い」なので、交配の相手からは外さない。
+GENDERLESS = "U"
 UNKNOWN_SEX = "-"
 
-SEX_JA = {MALE: "♂", FEMALE: "♀", UNKNOWN_SEX: "-"}
+SEX_JA = {MALE: "♂", FEMALE: "♀", GENDERLESS: "U", UNKNOWN_SEX: "-"}
 
 STATE_WILD = "wild"
 STATE_TAMED = "tamed"
@@ -120,11 +123,18 @@ class Creature(object):
     def is_bred(self):
         return self.state == STATE_BRED
 
+    @property
+    def is_genderless(self):
+        return self.sex == GENDERLESS
+
     def can_breed(self):
-        """交配に使える個体か (去勢・死亡・性別不明を除く)。"""
+        """交配に使える個体か (去勢・死亡・性別不明を除く)。
+
+        性別なし (U) の種族は雌雄が無いだけで交配はできるので通す。
+        """
         if self.neutered or self.status == STATUS_DEAD:
             return False
-        return self.sex in (MALE, FEMALE)
+        return self.sex in (MALE, FEMALE, GENDERLESS)
 
     # ---- レベル --------------------------------------------------------
 

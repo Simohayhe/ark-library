@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from arklib import ark, breeding, colors, naming, records
-from arklib.creature import FEMALE, MALE, Creature
+from arklib.creature import FEMALE, GENDERLESS, MALE, Creature
 
 PASS, FAIL = [], []
 MAX, MIN = breeding.MAX, breeding.MIN
@@ -163,6 +163,34 @@ def main():
     again = breeding.reassign_mutations(lib)[0]
     check("7.7 二度目は何も変えない", again, 0)
     lib.close()
+
+    print("\n[8] 性別が無い種族 (メイグアナなど)")
+    u1 = mk("U1", GENDERLESS, hp=40, me=10)
+    u2 = mk("U2", GENDERLESS, hp=10, me=40)
+    u3 = mk("U3", GENDERLESS, hp=20, me=20)
+    check("8.1 交配に使える", u1.can_breed(), True)
+    check("8.2 性別なしと分かる", u1.is_genderless, True)
+    check("8.3 同じ種族なら組める", breeding.can_mate(u1, u2), True)
+    check("8.4 自分とは組めない", breeding.can_mate(u1, u1), False)
+    check("8.5 M/F とは組めない", breeding.can_mate(u1, mk("M", MALE)), False)
+    check("8.6 全部の組み合わせが出る",
+          len(list(breeding.iter_pairs([u1, u2, u3]))), 3)
+    check("8.7 並び順は名前順",
+          [c.display_name for c in breeding.order_pair(u2, u1)], ["U1", "U2"])
+    ranked = breeding.rank_pairs([u1, u2, u3], stat_list=[ark.HEALTH, ark.MELEE])
+    check("8.8 おすすめペアが出る", len(ranked), 3)
+    best = ranked[0]
+    check("8.9 一番良いのは 40/40 持ち同士",
+          sorted([best.male.display_name, best.female.display_name]),
+          ["U1", "U2"])
+    check("8.10 名前の先頭は U", naming.make_name(u1, [ark.HEALTH]), "U H40")
+    mixed = [u1, u2, mk("M", MALE), mk("F", FEMALE)]
+    check("8.11 混ざっていても取り違えない",
+          sorted("".join(sorted([a.display_name, b.display_name]))
+                 for a, b in breeding.iter_pairs(mixed)), ["FM", "U1U2"])
+    dead = mk("U4", GENDERLESS)
+    dead.status = "dead"
+    check("8.12 死亡は除く", breeding.can_mate(u1, dead), False)
 
     print("\n" + "=" * 66)
     print("%d 件成功 / %d 件失敗" % (len(PASS), len(FAIL)))

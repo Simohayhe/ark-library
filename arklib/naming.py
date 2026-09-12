@@ -11,7 +11,7 @@
 そのまま交配の材料として使えるため。自分で振った強化レベルは入れない。
 """
 from . import ark
-from .creature import FEMALE, MALE
+from .creature import FEMALE, GENDERLESS, MALE
 
 # ステータス → 名前に使う頭文字
 LETTERS = {
@@ -29,7 +29,8 @@ LETTERS = {
 # 既定で名前に入れるステータス
 DEFAULT_STATS = [ark.HEALTH, ark.STAMINA, ark.WEIGHT, ark.MELEE]
 
-SEX_LETTER = {MALE: "M", FEMALE: "F"}
+# 性別なしの種族は U。名前を見たときに「オスでもメスでもない」と分かるように
+SEX_LETTER = {MALE: "M", FEMALE: "F", GENDERLESS: "U"}
 
 
 # 名前の作り方
