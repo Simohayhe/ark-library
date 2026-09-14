@@ -202,9 +202,11 @@ class AutoImport(object):
                 pass
 
         # 記録の判定を挟みたいので、ここでは保存しない
+        t0 = time.time()
         res = import_file(path, self.st.species_db, sm, library=None,
                           server=server, game=self.st.game,
                           parent_lookup=lib.by_ark_id, budget=budget)
+        took = time.time() - t0
 
         if not res.ok:
             # 出来たてのファイルなら、書き込みの途中を掴んだ可能性がある。
@@ -213,7 +215,7 @@ class AutoImport(object):
                 self._seen.pop(path, None)
                 return res
             lib.mark_imported(path, _mtime(path), None, "ng")
-            self._log("失敗  %s" % os.path.basename(path), "ng")
+            self._log("失敗  %s%s" % (os.path.basename(path), _took(took)), "ng")
             for p in res.problems:
                 self._log("      " + p, "ng")
             if announce:
@@ -248,9 +250,9 @@ class AutoImport(object):
 
         head = "更新" if action == "updated" else "追加"
         extra = check.label()
-        self._log("%s  %s %s Lv%d  %s%s"
+        self._log("%s  %s %s Lv%d  %s%s%s"
                   % (head, cr.species_name, cr.sex_ja, cr.level, name_text,
-                     ("  ← " + extra) if extra else ""),
+                     ("  ← " + extra) if extra else "", _took(took)),
                   "upd" if action == "updated" else "ok")
         if res.ambiguous:
             self._log("      ⚠ レベルの内訳が %d 通り考えられます"
@@ -328,6 +330,15 @@ def _mtime(path):
         return os.path.getmtime(path)
     except OSError:
         return 0.0
+
+
+def _took(seconds):
+    """時間がかかったときだけログに秒数を出す。
+
+    「遅い」と言われたときに、どのファイルで何秒かかったのかが分からないと
+    調べようがないため。
+    """
+    return "  (%.1f秒)" % seconds if seconds >= 0.5 else ""
 
 
 def _scandir(folder):

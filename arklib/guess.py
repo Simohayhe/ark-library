@@ -13,8 +13,16 @@ Mod の生物は、公開されている種族データが無いと取り込め�
 
 当てた結果は「読み替え」として覚えておき、次からは自動で同じ種族として扱う。
 """
+import time
+
 from . import ark, extraction
 from .creature import STATE_BRED, STATE_TAMED
+
+# 1 種族あたりにかけてよい秒数と、全体の打ち切り。
+# 総当たりは 400 種族ぶん回るので、1 種族に既定の 1.2 秒を許すと最悪
+# 8 分かかってしまう。当てるだけなら浅く探せば十分
+PER_SPECIES_BUDGET = 0.2
+TOTAL_BUDGET = 6.0
 
 
 # %表示のステータスは「100% からの増分」で入っているので、1.0 は「持っていない」
@@ -63,14 +71,18 @@ class Guess(object):
 
 def guess_species(species_db, level, values, server_multipliers,
                   state=STATE_TAMED, imprint=0.0, game="asa", limit=10,
-                  asa_only=True, breedable_only=True):
+                  asa_only=True, breedable_only=True, budget=None):
     """表示値に当てはまる種族を探す。当てはまり方が良い順に返す。
 
     values は {statIndex: 表示値}。%表示のものは小数で (246.3% → 2.463)。
+    budget は総当たり全体にかけてよい秒数 (既定 TOTAL_BUDGET)。
     """
     used = meaningful_stats(values)
     out = []
+    deadline = time.perf_counter() + (TOTAL_BUDGET if budget is None else budget)
     for sp in species_db.all:
+        if time.perf_counter() > deadline:
+            break
         if asa_only and not sp.in_asa:
             continue
         if breedable_only and not sp.is_breedable():
@@ -82,7 +94,8 @@ def guess_species(species_db, level, values, server_multipliers,
             res = extraction.extract_levels(
                 sp, level, values, server_multipliers, state=state,
                 imprint=imprint,
-                taming_eff=1.0 if state != STATE_TAMED else None, game=game)
+                taming_eff=1.0 if state != STATE_TAMED else None, game=game,
+                budget=PER_SPECIES_BUDGET)
         except Exception:
             continue
         if res.ok:
