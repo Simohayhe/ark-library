@@ -313,6 +313,10 @@ def main():
     check("6.2 他は変異なし", sum(mlm) - mlm[ark.HEALTH], 0)
     print("       " + " / ".join(notes))
 
+    # ---- [8] 逆算の速さ ---------------------------------------------
+    print("\n[8] 逆算の速さ (強化レベルを振ったテイム個体)")
+    _speed_check(db, sm, rex)
+
     # ---- [7] 性別が無い種族 -----------------------------------------
     print("\n[7] 性別が無い種族 (メイグアナ)")
     _genderless_check(db, sm, tmp)
@@ -415,6 +419,88 @@ def _leveled_tamed_check(db, sm, rex, tmp):
                          ark_id=(777, 888)), db, sm, library=lib, server="t")
     check("3.7.4 初見でも強化 30 なら読める", r.ok, True)
     lib.close()
+
+
+def _speed_check(db, sm, rex):
+    """一次式の近道が本当の計算と一致すること、そして速いこと。
+
+    ステータス値は野生レベルについても強化レベルについても一次なので、
+    2 点だけ計算して残りは掛け算・足し算で出している (extractor._line_at /
+    extraction._Line)。ここが狂うと逆算の答えが静かに変わるので見張る。
+    """
+    import time
+
+    from arklib import extraction, extractor
+
+    # --- 近道と本当の計算が合うか (種族とステータスを一通り) ---
+    bad = []
+    checked = 0
+    for sp in [s2 for s2 in db.all if s2.in_asa][:120]:
+        ex = extractor.Extraction(sp, 100, {}, "tamed", 0.8, 0.0, 1.0)
+        for s2 in sp.displayed_stat_indices():
+            if sp.stats[s2] is None:
+                continue
+            for ld in (0, 1, 7, 30):
+                got = extractor._line_at(sp, ex, s2, ld)
+                want0 = extractor._calc(sp, s2, ex, 0, ld)
+                want1 = extractor._calc(sp, s2, ex, 1, ld)
+                checked += 1
+                if (abs(got[0] - want0) > 1e-9 * max(1.0, abs(want0))
+                        or abs(got[1] - (want1 - want0))
+                        > 1e-9 * max(1.0, abs(want1))):
+                    bad.append((sp.name, s2, ld, got, (want0, want1 - want0)))
+    check("8.1 近道の値が本当の計算と一致 (%d 通り)" % checked, len(bad), 0)
+    if bad:
+        for b in bad[:3]:
+            print("      %s" % (b,))
+
+    line_bad = []
+    for sp in [s2 for s2 in db.all if s2.in_asa][:120]:
+        for s2 in sp.displayed_stat_indices():
+            if sp.stats[s2] is None:
+                continue
+            line = extraction._Line(sp, s2, 0.73, 0.0, 1.0)
+            for ld in (0, 3, 40):
+                b0, k0 = line.at(ld)
+                w0 = extraction._calc(sp, s2, 0, ld, 0.73, 0.0, 1.0)
+                w1 = extraction._calc(sp, s2, 1, ld, 0.73, 0.0, 1.0)
+                if (abs(b0 - w0) > 1e-9 * max(1.0, abs(w0))
+                        or abs(k0 - (w1 - w0)) > 1e-9 * max(1.0, abs(w1))):
+                    line_bad.append((sp.name, s2, ld))
+    check("8.2 効率側の近道も一致", len(line_bad), 0)
+
+    # --- 速さ ---
+    lw = [0] * 12
+    for s2 in (ark.HEALTH, ark.STAMINA, ark.OXYGEN, ark.FOOD, ark.WEIGHT,
+               ark.MELEE):
+        lw[s2] = 30
+    ld = [0] * 12
+    ld[ark.HEALTH] = 30
+    ld[ark.WEIGHT] = 30
+    wild_total = sum(lw)
+    vals = {}
+    for s2 in range(ark.STATS_COUNT):
+        if rex.stats[s2] is None:
+            continue
+        lvl = wild_total if s2 == ark.TORPIDITY else lw[s2]
+        dd = 0 if s2 == ark.TORPIDITY else ld[s2]
+        vals[s2] = stats.calc_value(rex, s2, lvl, 0, dd, True, taming_eff=0.95)
+    level = 1 + wild_total + sum(ld)
+
+    t = time.perf_counter()
+    r = extraction.extract_levels(rex, level, vals, sm, state="tamed",
+                                  budget=30.0)
+    dt = (time.perf_counter() - t) * 1000
+    check("8.3 強化60のテイム個体が解ける", r.ok, True)
+    if r.ok:
+        check("8.4 野生レベルが合っている",
+              [r.levels_wild[s2] for s2 in (ark.HEALTH, ark.MELEE)],
+              [lw[ark.HEALTH], lw[ark.MELEE]])
+        check("8.5 強化レベルが合っている",
+              [r.levels_dom[s2] for s2 in (ark.HEALTH, ark.WEIGHT)],
+              [ld[ark.HEALTH], ld[ark.WEIGHT]])
+    # 前は 400ms 近くかかっていた。遅い機械でも 300ms は超えないはず
+    check("8.6 %.0f ms で終わる (300ms 未満)" % dt, dt < 300, True)
 
 
 MAEGUANA_BP = "/Game/ASA/Dinos/Maelizard/Maelizard_Character_BP.Maelizard_Character_BP"

@@ -82,6 +82,13 @@ class ImportPage(tk.Frame):
                        font=theme.F.get("small"), bd=0,
                        highlightthickness=0).pack(side="left", padx=(10, 0))
 
+        # まとめて取り込むと 1 件ずつ時間がかかることがあるので、
+        # いま何件目を読んでいるかを出す (止まっているように見せない)
+        self.progress = tk.Label(b, text="", bg=theme.CARD, fg=theme.INK_SUB,
+                                 font=theme.F.get("small"), anchor="w")
+        self.progress.pack(fill="x", pady=(4, 0))
+        self._cancel = False
+
         log_card = theme.Card(self, bg=theme.BG)
         log_card.pack(fill="both", expand=True, padx=16, pady=(4, 14))
         lb = log_card.body
@@ -193,13 +200,22 @@ class ImportPage(tk.Frame):
         lib = self.st.library
         files.sort(key=lambda p: _mtime(p))       # 親を先に入れたい
 
-        added = updated = failed = skipped = 0
-        for p in files:
-            if skip_known and lib.was_imported(p, _mtime(p)):
-                skipped += 1
-                continue
-            # 手で取り込むときは、時間をかけてでも解きにいく
-            r = self.auto.handle_file(p, announce=False, budget=8.0)
+        todo = [p for p in files
+                if not (skip_known and lib.was_imported(p, _mtime(p)))]
+        skipped = len(files) - len(todo)
+
+        added = updated = failed = 0
+        self._cancel = False
+        started = time.time()
+        for i, p in enumerate(todo, 1):
+            if self._cancel:
+                self._say("途中でやめました (%d/%d 件)" % (i - 1, len(todo)), "note")
+                break
+            self._progress("%d/%d  %s を読んでいます…"
+                           % (i, len(todo), os.path.basename(p)))
+            # 手で取り込むときは、時間をかけてでも解きにいく。
+            # 逆算が速くなったので、4 秒でも前の 8 秒より広く探せる
+            r = self.auto.handle_file(p, announce=False, budget=4.0)
             if r.ok:
                 if r.action == "updated":
                     updated += 1
@@ -207,8 +223,12 @@ class ImportPage(tk.Frame):
                     added += 1
             else:
                 failed += 1
+        self._progress("")
 
         total = added + updated + failed
+        if total > 1:
+            self._say("%d 件を %.1f 秒で読みました" % (total, time.time() - started),
+                      "note")
         if total == 0 and not quiet_empty:
             self._say("新しいファイルはありませんでした。", "note")
         elif total == 0:
@@ -218,6 +238,18 @@ class ImportPage(tk.Frame):
             self._say("― 追加 %d / 更新 %d / 失敗 %d ―" % (added, updated, failed),
                       "note")
         self.app.reload_pages(except_key="import")
+
+    def _progress(self, text):
+        """いま何件目かを出して、画面を描き直す。
+
+        取り込みは 1 件に数百 ms かかることがある。まとめて読むと固まって
+        見えるので、1 件ごとに描き直して進み具合を見せる。
+        """
+        try:
+            self.progress.configure(text=text)
+            self.update()
+        except tk.TclError:
+            pass
 
     # ---- 見張り --------------------------------------------------------
 

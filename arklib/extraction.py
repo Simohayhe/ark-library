@@ -22,6 +22,7 @@ import time
 from . import ark, extractor, stats
 from .creature import STATE_BRED, STATE_TAMED, STATE_WILD
 from .multipliers import IDX_TAMING_MULT
+from .species import INF
 
 # 逆算した効率を同一視する丸め桁
 TE_ROUND = 6
@@ -91,6 +92,9 @@ def extract_levels(species, level, values, server_multipliers, state=STATE_BRED,
     budget = TIME_BUDGET if budget is None else budget
     started = time.perf_counter()
     stopped_early = False
+    # 効率だけを変えて何度も逆算するので、効率に関係しないステータスの
+    # 候補は使い回す
+    cache = {}
     for te, likely in cands:
         # 「ありそうな効率」で解けたなら、それ以外は見ない。
         # 混ぜると、たまたま数字が合うだけの効率まで候補に入ってしまう
@@ -101,7 +105,7 @@ def extract_levels(species, level, values, server_multipliers, state=STATE_BRED,
             break
         ex = extractor.extract(species, level, vals, server_multipliers,
                                state=state, taming_eff=te, imprint=imprint,
-                               game=game)
+                               game=game, cache=cache)
         if not ex.ok:
             continue
         for sol in ex.solutions:
@@ -178,6 +182,10 @@ def taming_eff_candidates(species, level, values, sm, imprint=0.0, game="asa",
 
     probe = dep[0]
     others = dep[1:]
+    target = values[probe]
+    # 効率 0 と 1 の 2 本の直線を作っておけば、あとは割り算だけで効率が出る
+    line0 = _Line(sp, probe, 0.0, imprint, sm.imprint_stat_scale)
+    line1 = _Line(sp, probe, 1.0, imprint, sm.imprint_stat_scale)
     cands = {}       # 丸めた効率 -> (効率, 野生レベル合計)
     for wild_total in wild_totals:
         dom_total = level - 1 - wild_total
@@ -189,10 +197,15 @@ def taming_eff_candidates(species, level, values, sm, imprint=0.0, game="asa",
         lw_range = (range(0, wild_total + 1) if not known_wild
                     else [known_wild[probe]])
         for ld in (range(0, dom_total + 1) if can_dom else (0,)):
+            b0, k0 = line0.at(ld)
+            b1, k1 = line1.at(ld)
             for lw in lw_range:
-                te = _solve_te(sp, probe, values[probe], lw, ld, imprint,
-                               sm.imprint_stat_scale)
-                if te is None or not (0.0 < te <= 1.0001):
+                v0 = b0 + lw * k0
+                span = (b1 + lw * k1) - v0
+                if abs(span) < 1e-12:
+                    continue
+                te = (target - v0) / span
+                if not (0.0 < te <= 1.0001):
                     continue
                 te = min(te, 1.0)
                 key = round(te, TE_ROUND)
@@ -275,6 +288,51 @@ def _calc(sp, s, lw, ld, te, imprint, imprint_scale):
                             round_to_ingame=False)
 
 
+class _Line(object):
+    """ステータス値を (野生レベル) の一次式として持ち回す。
+
+    値は野生レベルについても強化レベルについても一次なので、**野生レベル
+    0 と 1 の 2 点**を計算しておけば、強化レベルぶんは掛け算・足し算で出せる。
+
+        割合系 (体力・近接など)  値 = (v0 + 傾き*Lw) * (1 + Ld*IncDom)
+        それ以外 (重量など)      値 = (v0 + 傾き*Lw) + Ld*IncDom
+
+    強化レベルを 0〜60 まで総当たりするような個体では、ここを毎回計算し直すと
+    取り込みが数百 ms 単位で遅くなる。値が 0 で頭打ちになる場合と上限 (cap) が
+    ある場合はこの形が崩れるので、そのときだけ素直に計算する。
+    """
+
+    __slots__ = ("sp", "s", "te", "imprint", "scale", "v0", "slope", "pct",
+                 "inc_dom", "fast")
+
+    def __init__(self, sp, s, te, imprint, imprint_scale):
+        self.sp = sp
+        self.s = s
+        self.te = te
+        self.imprint = imprint
+        self.scale = imprint_scale
+        st = sp.stats[s]
+        self.v0 = _calc(sp, s, 0, 0, te, imprint, imprint_scale)
+        v1 = _calc(sp, s, 1, 0, te, imprint, imprint_scale)
+        self.slope = v1 - self.v0
+        self.pct = st.as_percentage
+        self.inc_dom = st.inc_dom
+        self.fast = (st.cap == INF and self.v0 > 0 and v1 > 0)
+
+    def at(self, ld):
+        """強化レベルを ld としたときの (切片, 傾き)。"""
+        if ld == 0:
+            return self.v0, self.slope
+        if not self.fast:
+            b = _calc(self.sp, self.s, 0, ld, self.te, self.imprint, self.scale)
+            v1 = _calc(self.sp, self.s, 1, ld, self.te, self.imprint, self.scale)
+            return b, v1 - b
+        if self.pct:
+            k = 1.0 + ld * self.inc_dom
+            return self.v0 * k, self.slope * k
+        return self.v0 + ld * self.inc_dom, self.slope
+
+
 def _solve_te(sp, s, target, lw, ld, imprint, imprint_scale):
     v0 = _calc(sp, s, lw, ld, 0.0, imprint, imprint_scale)
     v1 = _calc(sp, s, lw, ld, 1.0, imprint, imprint_scale)
@@ -307,10 +365,9 @@ def _has_integer_levels(sp, s, target, te, wild_total, dom_total, imprint,
     st = sp.stats[s]
     tol = _tolerance(s, target)
     can_dom = st.inc_dom != 0
+    line = _Line(sp, s, te, imprint, imprint_scale)
     for ld in (range(0, dom_total + 1) if can_dom else (0,)):
-        v0 = _calc(sp, s, 0, ld, te, imprint, imprint_scale)
-        v1 = _calc(sp, s, 1, ld, te, imprint, imprint_scale)
-        slope = v1 - v0
+        v0, slope = line.at(ld)
         if abs(slope) < 1e-12:
             if abs(target - v0) <= tol:
                 return True

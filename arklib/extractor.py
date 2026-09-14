@@ -28,6 +28,7 @@ import math
 
 from . import ark, stats
 from .multipliers import ServerMultipliers
+from .species import INF
 
 # 組み合わせ探索で返す解の上限
 MAX_SOLUTIONS = 50
@@ -46,6 +47,9 @@ class Extraction(object):
 
         self.wild_total = None
         self.dom_total = None
+        # ステータスごとの一次式 (下の _stat_line)。強化レベルの候補を
+        # 総当たりするので、ここを毎回計算し直すと取り込みが目に見えて遅くなる
+        self._lines = {}
         self.solutions = []      # [{stat: (Lw, Ld)}, ...]
         self.problems = []
         self.notes = []
@@ -109,6 +113,46 @@ def _calc(sp, s, ex, lw, ld):
                             round_to_ingame=False)
 
 
+def _stat_line(sp, ex, s):
+    """ステータス値を (野生レベル, 強化レベル) の一次式として表す係数。
+
+    ステータス値の式は野生レベルについても強化レベルについても一次なので、
+    **野生レベル 0 と 1 の 2 点だけ**計算しておけば、あとの強化レベルは
+    掛け算・足し算で出せる。
+
+        割合系 (体力・近接など)  値 = (v0 + 傾き*Lw) * (1 + Ld*IncDom)
+        それ以外 (重量など)      値 = (v0 + 傾き*Lw) + Ld*IncDom
+
+    ただし値が 0 で頭打ちになる場合と上限 (cap) がある場合はこの形が崩れる
+    ので、そのときは素直に毎回計算する (usable=False)。
+
+    戻り値 (v0, 傾き, 割合系か, IncDom, この式を使ってよいか)
+    """
+    got = ex._lines.get(s)
+    if got is None:
+        st = sp.stats[s]
+        v0 = _calc(sp, s, ex, 0, 0)
+        v1 = _calc(sp, s, ex, 1, 0)
+        usable = (st.cap == INF and v0 > 0 and v1 > 0 and ex.domesticated)
+        got = (v0, v1 - v0, st.as_percentage, st.inc_dom, usable)
+        ex._lines[s] = got
+    return got
+
+
+def _line_at(sp, ex, s, ld):
+    """強化レベルを ld としたときの (切片, 傾き)。"""
+    v0, slope, pct, inc_dom, usable = _stat_line(sp, ex, s)
+    if ld == 0:
+        return v0, slope
+    if not usable:
+        base = _calc(sp, s, ex, 0, ld)
+        return base, _calc(sp, s, ex, 1, ld) - base
+    if pct:
+        k = 1.0 + ld * inc_dom
+        return v0 * k, slope * k
+    return v0 + ld * inc_dom, slope
+
+
 _TOL_CACHE = {}
 
 
@@ -128,9 +172,7 @@ def _wild_levels_for(sp, ex, s, ld, cap):
     """強化レベルを ld と仮定したときに、観測値と整合する野生レベルを列挙する。"""
     target = ex.values[s]
     tol = _tolerance(s, target)
-    v0 = _calc(sp, s, ex, 0, ld)
-    v1 = _calc(sp, s, ex, 1, ld)
-    slope = v1 - v0
+    v0, slope = _line_at(sp, ex, s, ld)
     if abs(slope) < 1e-12:
         # このステータスは野生レベルで動かない
         return list(range(0, cap + 1)) if abs(target - v0) <= tol else []
@@ -200,13 +242,17 @@ def _search(options, wild_total, dom_total, limit=MAX_SOLUTIONS):
 
 
 def extract(species, level, values, server_multipliers=None, state="bred",
-            taming_eff=1.0, imprint=0.0, game="asa"):
+            taming_eff=1.0, imprint=0.0, game="asa", cache=None):
     """ステータスの表示値から野生 / 強化レベルの内訳を割り出す。
 
     species : Species
     level   : 表示レベル
     values  : {statIndex: 表示値}。%表示のものは小数で (125.8% → 1.258)
     state   : 'bred' / 'tamed' / 'wild'
+    cache   : テイム効率だけを変えて何度も呼ぶとき用の使い回し箱 (dict)。
+              **テイム効率で値が変わらないステータス** (乗算ボーナスを
+              持たない酸素・食料・重量など) の候補はどの効率でも同じなので、
+              一度作ったら使い回す。テイム個体の逆算はここが効く
     """
     sm = server_multipliers or ServerMultipliers()
     sp = species
@@ -248,12 +294,20 @@ def extract(species, level, values, server_multipliers=None, state="bred",
             st = sp.stats[s]
             can_wild = sp.can_have_wild_levels(s)
             can_dom = ex.domesticated and st.inc_dom != 0
-            combos = []
-            dom_range = range(0, dom_total + 1) if can_dom else (0,)
-            for ld in dom_range:
-                cap = wild_total if can_wild else 0
-                for lw in _wild_levels_for(sp, ex, s, ld, cap):
-                    combos.append((lw, ld))
+            # 乗算ボーナスが無いステータスはテイム効率で値が変わらない
+            key = ((s, wild_total, dom_total)
+                   if cache is not None and st.mult_affinity == 0 else None)
+            if key is not None and key in cache:
+                combos = cache[key]
+            else:
+                combos = []
+                dom_range = range(0, dom_total + 1) if can_dom else (0,)
+                for ld in dom_range:
+                    cap = wild_total if can_wild else 0
+                    for lw in _wild_levels_for(sp, ex, s, ld, cap):
+                        combos.append((lw, ld))
+                if key is not None:
+                    cache[key] = combos
             if not combos:
                 broke = True
                 ex.problems.append(
