@@ -109,9 +109,16 @@ class AlertsPage(tk.Frame):
                self._save_naming)
         self.name_sex = tk.BooleanVar()
         _check(b2, "先頭に性別 (M / F / U) を付加", self.name_sex, self._save_naming)
-        self.name_fill = tk.BooleanVar()
-        _check(b2, "ゲーム内で名前が付いていない個体は、この名前で登録する",
-               self.name_fill, self._save_naming)
+        tk.Label(b2, text="ライブラリに登録する名前", bg=theme.CARD,
+                 fg=theme.INK_SUB, font=theme.F.get("small"),
+                 anchor="w").pack(fill="x", pady=(6, 0))
+        self.name_apply = tk.StringVar()
+        self._apply_keys = [k for k, _l in naming.APPLIES]
+        self.cb_apply = ttk.Combobox(
+            b2, textvariable=self.name_apply, state="readonly", width=42,
+            values=[l for _k, l in naming.APPLIES])
+        self.cb_apply.pack(anchor="w", pady=(2, 0))
+        self.cb_apply.bind("<<ComboboxSelected>>", lambda e: self._save_naming())
 
         tk.Label(b2, text="対象ステータス", bg=theme.CARD, fg=theme.INK_SUB,
                  font=theme.F.get("small"), anchor="w").pack(fill="x", pady=(6, 0))
@@ -248,7 +255,7 @@ class AlertsPage(tk.Frame):
 
         self.name_copy.set(bool(a.get("naming_copy")))
         self.name_sex.set(bool(a.get("naming_with_sex")))
-        self.name_fill.set(bool(a.get("naming_fill_empty")))
+        self.name_apply.set(naming.apply_label(a.naming_apply()))
         self.name_mark.set(a.get("naming_mutation_mark") or "")
         mode = a.get("naming_mode") or naming.MODE_ALL
         if mode in self._mode_keys:
@@ -292,7 +299,11 @@ class AlertsPage(tk.Frame):
         a = self.auto
         a.set("naming_copy", bool(self.name_copy.get()))
         a.set("naming_with_sex", bool(self.name_sex.get()))
-        a.set("naming_fill_empty", bool(self.name_fill.get()))
+        want = self.name_apply.get()
+        for k, lbl in naming.APPLIES:
+            if lbl == want:
+                a.set("naming_apply", k)
+                break
         a.set("naming_mutation_mark", self.name_mark.get()[:2])
         label = self.name_mode.get()
         if label in self._mode_labels:

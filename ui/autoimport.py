@@ -38,7 +38,8 @@ DEFAULTS = {
     "naming_with_sex": True,
     "naming_mutation_mark": "",
     "naming_mode": naming.MODE_ALL,
-    "naming_fill_empty": True,           # 名前が空の個体にはこの名前を入れておく
+    "naming_fill_empty": True,           # 昔の設定（下の naming_apply に引き継ぐ）
+    "naming_apply": None,                # None なら naming_fill_empty から決める
     "overlay_enabled": True,
     "overlay_seconds": 5.0,
     "overlay_position": "top",
@@ -81,6 +82,18 @@ class AutoImport(object):
         specs = dict(self.st.library.get_setting("sound_specs", {}) or {})
         specs[event] = spec
         self.st.library.set_setting("sound_specs", specs)
+
+    def naming_apply(self):
+        """ライブラリに登録する名前の決め方。
+
+        昔は「名前が空のときだけ入れる」の入切しか無かったので、
+        その設定から引き継ぐ。
+        """
+        got = self.get("naming_apply")
+        if got in (naming.APPLY_EMPTY, naming.APPLY_ALWAYS, naming.APPLY_NEVER):
+            return got
+        return (naming.APPLY_EMPTY if self.get("naming_fill_empty")
+                else naming.APPLY_NEVER)
 
     def naming_stats(self, species_bp=None):
         """名前に入れるステータス。種族ごとの設定があればそちらを使う。"""
@@ -271,7 +284,9 @@ class AutoImport(object):
         name_text = naming.make_name(cr, rule["stats"], rule["with_sex"],
                                      mutation_mark=rule["mark"],
                                      mode=rule["mode"])
-        if self.get("naming_fill_empty") and not cr.name:
+        how = self.naming_apply()
+        if how == naming.APPLY_ALWAYS or (how == naming.APPLY_EMPTY
+                                          and not cr.name):
             cr.name = name_text
 
         # 名前のコピーがいちばん待たれる仕事なので、保存より先にやる

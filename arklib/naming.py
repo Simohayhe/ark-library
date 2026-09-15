@@ -33,6 +33,24 @@ DEFAULT_STATS = [ark.HEALTH, ark.STAMINA, ark.WEIGHT, ark.MELEE]
 SEX_LETTER = {MALE: "M", FEMALE: "F", GENDERLESS: "U"}
 
 
+# ライブラリに登録するときの名前の決め方
+APPLY_EMPTY = "empty"    # ゲーム内で名前が無いときだけ、作った名前を入れる
+APPLY_ALWAYS = "always"  # いつも作った名前で登録する（ゲーム内の名前は使わない）
+APPLY_NEVER = "never"    # 入れない。ゲーム内の名前のまま
+APPLIES = (
+    (APPLY_EMPTY, "名前が無い個体だけ、作った名前で登録する"),
+    (APPLY_ALWAYS, "いつも、作った名前で登録する"),
+    (APPLY_NEVER, "入れない（ゲーム内の名前のまま）"),
+)
+
+
+def apply_label(key):
+    for k, lbl in APPLIES:
+        if k == key:
+            return lbl
+    return APPLIES[0][1]
+
+
 # 名前の作り方
 MODE_ALL = "all"        # 選んだステータスを全部並べる   M H47 S24 W37 M26
 MODE_ZEROS = "zeros"    # 0 のステータスだけ並べる        M O0 F0
