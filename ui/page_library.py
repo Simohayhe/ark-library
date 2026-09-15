@@ -261,10 +261,21 @@ class LibraryPage(tk.Frame):
             return []
         return arkcolors.used_regions(self.species_bp)
 
+    def _save_col_width(self, key, width):
+        """掴んで変えた幅を覚えておく。次に開いても同じ幅で出る。"""
+        if key == "name":
+            self.app.state_obj.library.set_setting("col_name_width", int(width))
+
     def _build_table(self, stat_list):
         for w in self.table_holder.winfo_children():
             w.destroy()
-        cols = [Col("name", "名前", 116),
+        # 名前の幅は、掴んで変えられる。変えた幅は覚えておく
+        name_w = self.app.state_obj.library.get_setting("col_name_width", 116)
+        try:
+            name_w = max(60, min(600, int(name_w)))
+        except (TypeError, ValueError):
+            name_w = 116
+        cols = [Col("name", "名前", name_w),
                 Col("sex", "性", 34, align="center"),
                 Col("level", "Lv", 42, align="e", numeric=True),
                 Col("base", "素Lv", 46, align="e", numeric=True)]
@@ -290,6 +301,7 @@ class LibraryPage(tk.Frame):
                            on_activate=lambda r: self._open_detail(),
                            cell_style=self._cell_style, row_style=self._row_style,
                            on_row_menu=self._row_menu,
+                           on_resize_col=self._save_col_width,
                            bg=theme.CARD, min_rows=10)
         self.table.pack(fill="both", expand=True)
         self.table.sort_key = "base"

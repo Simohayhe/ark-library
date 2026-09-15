@@ -37,9 +37,14 @@ class Col(object):
 
 
 class Table(tk.Frame):
+    # 1列目は左に貼り付けたままにする。横に流しても名前が消えないように。
+    FROZEN = 1
+    MIN_COL_W = 60
+    MAX_COL_W = 600
+
     def __init__(self, master, cols, on_select=None, on_activate=None,
                  cell_style=None, row_style=None, bg=None, min_rows=6,
-                 on_header_menu=None, on_row_menu=None):
+                 on_header_menu=None, on_row_menu=None, on_resize_col=None):
         bg = theme.CARD if bg is None else bg
         tk.Frame.__init__(self, master, bg=bg)
         self.cols = list(cols)
@@ -48,6 +53,8 @@ class Table(tk.Frame):
         self.cell_style = cell_style
         self.row_style = row_style
         self.on_header_menu = on_header_menu
+        self.on_resize_col = on_resize_col     # 幅を変えたら呼ぶ（覚えてもらう）
+        self._drag = None                      # 幅を変えている最中
         self.on_row_menu = on_row_menu
         self.bg = bg
 
@@ -86,7 +93,10 @@ class Table(tk.Frame):
         self.head.bind("<Shift-MouseWheel>", self._on_hwheel)
         self.canvas.bind("<Button-1>", self._on_click)
         self.canvas.bind("<Double-Button-1>", self._on_double)
-        self.head.bind("<Button-1>", self._on_head_click)
+        self.head.bind("<Button-1>", self._on_head_press)
+        self.head.bind("<B1-Motion>", self._on_head_move)
+        self.head.bind("<ButtonRelease-1>", self._on_head_release)
+        self.head.bind("<Motion>", self._on_head_move)
         self.head.bind("<Button-3>", self._on_head_right)
         self.canvas.bind("<Button-3>", self._on_right_click)
 
@@ -153,6 +163,21 @@ class Table(tk.Frame):
     def _total_width(self):
         return sum(c.width for c in self.cols)
 
+    def _frozen_w(self):
+        """左に貼り付けている列の幅。"""
+        return sum(c.width for c in self.cols[:self.FROZEN])
+
+    def _scroll_w(self):
+        """横に流れる側の幅。"""
+        return sum(c.width for c in self.cols[self.FROZEN:])
+
+    def _col_x(self, i):
+        """i 番目の列を、どこに描くか。"""
+        if i < self.FROZEN:
+            return sum(c.width for c in self.cols[:i])
+        return (self._frozen_w() - self.xoffset
+                + sum(c.width for c in self.cols[self.FROZEN:i]))
+
     def _redraw(self):
         self._draw_header()
         self._draw_rows()
@@ -163,8 +188,14 @@ class Table(tk.Frame):
         cv.delete("all")
         w = max(cv.winfo_width(), self._total_width())
         cv.create_rectangle(0, 0, w, HEADER_H, fill=theme.BG_SOFT, outline="")
-        x = -self.xoffset
-        for c in self.cols:
+        # 固定列は最後に描く。流れる側が下をくぐっても隠せるように
+        order = list(range(self.FROZEN, len(self.cols))) + list(range(self.FROZEN))
+        for i in order:
+            c = self.cols[i]
+            x = self._col_x(i)
+            if i < self.FROZEN:
+                cv.create_rectangle(x, 0, x + c.width, HEADER_H - 1,
+                                    fill=theme.BG_SOFT, outline="")
             title = c.title
             if self.sort_key == c.key:
                 title += " ▼" if self.sort_desc else " ▲"
@@ -174,7 +205,9 @@ class Table(tk.Frame):
             cv.create_text(tx, HEADER_H / 2, text=title, anchor=anchor,
                            fill=theme.INK_SUB if self.sort_key != c.key else theme.INK,
                            font=self.font_h)
-            x += c.width
+        # 幅を変えられる境目に、薄い縦線を出しておく
+        bx = self._frozen_w()
+        cv.create_line(bx, 4, bx, HEADER_H - 5, fill=theme.LINE)
         cv.create_line(0, HEADER_H - 1, w, HEADER_H - 1, fill=theme.LINE)
 
     def _draw_rows(self):
@@ -205,11 +238,17 @@ class Table(tk.Frame):
                 rbg = theme.HOVER_SOFT
             cv.create_rectangle(0, y, w, y + ROW_H, fill=rbg, outline="")
 
-            x = -self.xoffset
-            for c in self.cols:
+            order = (list(range(self.FROZEN, len(self.cols)))
+                     + list(range(self.FROZEN)))
+            for ci in order:
+                c = self.cols[ci]
+                x = self._col_x(ci)
                 if x + c.width < 0 or x > w:
-                    x += c.width
                     continue
+                if ci < self.FROZEN:
+                    # 流れてきた中身の上から塗り直す
+                    cv.create_rectangle(x, y, x + c.width, y + ROW_H - 1,
+                                        fill=rbg, outline="")
                 val = row.get(c.key)
                 text = "" if val is None else (val if isinstance(val, str) else _fmt(val))
                 fg = theme.INK
@@ -232,7 +271,6 @@ class Table(tk.Frame):
                 text = self._clip(text, c.width - 12)
                 cv.create_text(tx, y + ROW_H / 2, text=text, anchor=anchor,
                                fill=fg, font=font)
-                x += c.width
             cv.create_line(0, y + ROW_H - 1, w, y + ROW_H - 1, fill=theme.LINE)
 
     def _clip(self, text, px):
@@ -260,8 +298,8 @@ class Table(tk.Frame):
         self.sb.set(self.offset / total, (self.offset + h) / total)
 
     def _sync_hscrollbar(self):
-        w = max(1, self.canvas.winfo_width())
-        total = self._total_width()
+        w = max(1, self.canvas.winfo_width() - self._frozen_w())
+        total = self._scroll_w()
         if total <= w:
             if self.xoffset:
                 self.xoffset = 0
@@ -274,8 +312,8 @@ class Table(tk.Frame):
         self.hsb.set(self.xoffset / total, (self.xoffset + w) / total)
 
     def _on_hscrollbar(self, *args):
-        w = max(1, self.canvas.winfo_width())
-        total = self._total_width()
+        w = max(1, self.canvas.winfo_width() - self._frozen_w())
+        total = self._scroll_w()
         if args[0] == "moveto":
             self.xoffset = float(args[1]) * total
         elif args[0] == "scroll":
@@ -287,8 +325,8 @@ class Table(tk.Frame):
         self._sync_hscrollbar()
 
     def _on_hwheel(self, e):
-        w = max(1, self.canvas.winfo_width())
-        total = self._total_width()
+        w = max(1, self.canvas.winfo_width() - self._frozen_w())
+        total = self._scroll_w()
         if total <= w:
             return
         self.xoffset -= (e.delta / 120.0) * 60
@@ -366,13 +404,49 @@ class Table(tk.Frame):
             self.on_row_menu(self.rows[i], e)
 
     def _col_at(self, x):
-        x += self.xoffset
-        acc = 0
-        for c in self.cols:
+        """押した場所の列。固定列は流れないので、そのまま見る。"""
+        fw = self._frozen_w()
+        if x < fw:
+            acc = 0
+            for c in self.cols[:self.FROZEN]:
+                if acc <= x < acc + c.width:
+                    return c
+                acc += c.width
+            return self.cols[0] if self.cols else None
+        acc = fw - self.xoffset
+        for c in self.cols[self.FROZEN:]:
             if acc <= x < acc + c.width:
                 return c
             acc += c.width
         return None
+
+    GRIP = 5        # 境目をつかめる幅
+
+    def _on_head_press(self, e):
+        """境目に近ければ、幅を変えるつもりで掴む。"""
+        if abs(e.x - self._frozen_w()) <= self.GRIP and self.cols:
+            self._drag = (e.x, self.cols[0].width)
+            return "break"
+        self._drag = None
+        return self._on_head_click(e)
+
+    def _on_head_move(self, e):
+        if self._drag is None:
+            self.head.configure(
+                cursor="sb_h_double_arrow"
+                if abs(e.x - self._frozen_w()) <= self.GRIP else "")
+            return
+        x0, w0 = self._drag
+        self.cols[0].width = max(self.MIN_COL_W,
+                                 min(self.MAX_COL_W, w0 + (e.x - x0)))
+        self._redraw()
+
+    def _on_head_release(self, e):
+        if self._drag is None:
+            return
+        self._drag = None
+        if self.on_resize_col:
+            self.on_resize_col(self.cols[0].key, self.cols[0].width)
 
     def _on_head_click(self, e):
         c = self._col_at(e.x)
