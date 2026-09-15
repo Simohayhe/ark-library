@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """アプリ本体 (ウィンドウと画面切り替え)。"""
+import io
 import os
 import sys
+import time
 import tkinter as tk
 from tkinter import messagebox
 
@@ -21,6 +23,7 @@ NAV = [
     ("library", "ライブラリ", "🦖"),
     ("import", "取り込み", "📥"),
     ("alerts", "取り込み通知", "🔔"),
+    ("share", "PC間で共有", "🔗"),
     ("settings", "設定", "⚙"),
 ]
 
@@ -100,12 +103,19 @@ class App(tk.Tk):
 
         self._pages = {}
         self._current = None
+        # ほかの PC との共有。画面を組み立てる前に用意しておく
+        from .share import Share
+        self.share = Share(self)
         self._build()
 
         # エクスポートの見張り。取り込み画面を開いていなくても動く
         from .autoimport import AutoImport
         self.autoimport = AutoImport(self)
         self.autoimport.apply_setting()
+        try:
+            self.share.start()
+        except Exception:
+            pass
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.deiconify()
         self.show("library")
@@ -177,6 +187,9 @@ class App(tk.Tk):
         if key == "alerts":
             from .page_alerts import AlertsPage
             return AlertsPage(self.container, self)
+        if key == "share":
+            from .page_share import SharePage
+            return SharePage(self.container, self)
         if key == "settings":
             from .page_settings import SettingsPage
             return SettingsPage(self.container, self)
@@ -202,6 +215,10 @@ class App(tk.Tk):
         try:
             self.autoimport.stop()
             self.autoimport.overlay.hide()
+        except Exception:
+            pass
+        try:
+            self.share.stop()
         except Exception:
             pass
         try:
@@ -244,8 +261,81 @@ class _NavButton(tk.Canvas):
                          font=theme.F.get("cute"))
 
 
+def serve(argv):
+    """画面を出さずに共有元だけを動かす。
+
+        ArkLibrary.exe --serve [--port 8787] [--token あいことば] [DB]
+
+    サーバー用 PC でタスクとして常駐させたいとき用。設定済みなら引数は
+    要らない (ライブラリに覚えさせたものを使う)。
+    """
+    from arklib import sync
+    from arklib.library import Library
+
+    port = token = None
+    if "--port" in argv:
+        i = argv.index("--port")
+        port = int(argv[i + 1]); del argv[i:i + 2]
+    if "--token" in argv:
+        i = argv.index("--token")
+        token = argv[i + 1]; del argv[i:i + 2]
+    db_path = argv[0] if argv else None
+
+    lib = Library(db_path)
+    port = port or int(lib.get_setting("share_port", sync.DEFAULT_PORT)
+                       or sync.DEFAULT_PORT)
+    token = token or lib.get_setting("share_token", "") or ""
+    if not token:
+        token = sync.make_token()
+        lib.set_setting("share_token", token)
+    lib.set_setting("share_mode", "server")
+    lib.set_setting("share_port", port)
+    path = lib.path
+    lib.close()
+
+    server = sync.SyncServer(path, token, port)
+    lines = ["ARK ライブラリ 共有元",
+             "  DB       %s" % path,
+             "  ポート   %d" % port,
+             "  合言葉   %s" % token]
+    for a in sync.local_addresses():
+        lines.append("  アドレス http://%s:%d" % (a, port))
+    if not server.start():
+        lines = ["共有元にできませんでした", "  " + (server.error or "")]
+        _serve_note(path, lines)
+        sys.stderr.write("\n".join(lines) + "\n")
+        return 1
+    # exe は画面なしでビルドしてあるので print しても誰も読めない。
+    # アドレスと合言葉はファイルにも書き出しておく
+    _serve_note(path, lines)
+    for line in lines:
+        print(line)
+    print("Ctrl+C で止めます。")
+    try:
+        while True:
+            time.sleep(1.0)
+    except KeyboardInterrupt:
+        pass
+    server.stop()
+    return 0
+
+
+def _serve_note(db_path, lines):
+    """共有元の情報を DB の隣に書いておく (画面なしで動かしたとき用)。"""
+    try:
+        note = os.path.join(os.path.dirname(db_path) or ".", "share_info.txt")
+        with io.open(note, "w", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S") + "\n")
+            f.write("\n".join(lines) + "\n")
+    except OSError:
+        pass
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    if "--serve" in argv:
+        argv.remove("--serve")
+        return serve(argv)
     page = "library"
     if "--page" in argv:
         i = argv.index("--page")

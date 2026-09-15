@@ -281,6 +281,40 @@ step("ボアラトスが引ける",
      lambda: _check(app.state_obj.species_db.get("Boaratos") is not None,
                     "見つからない"))
 
+def share_page():
+    """PC 間共有の画面。実際に共有元を立てて止めるところまで。"""
+    app.show("share")
+    app.update()
+    page = app._pages["share"]
+    page.mode.set("server")
+    page.port.set("8793")
+    page._new_token()
+    page._on_mode()
+    app.update()
+    page._save()
+    app.update()
+    _check(app.share.server is not None and app.share.server.running,
+           "共有元が立たない: %s" % page.state_label.cget("text"))
+    from arklib import sync
+    got = sync.ping("http://127.0.0.1:8793")
+    _check(got.get("app") == "ark-library", "ping が返らない")
+    page.mode.set("client")
+    page.url.set("http://127.0.0.1:8793")
+    page._on_mode()
+    page._save()
+    app.update()
+    _check(app.share.server is None, "共有元が止まっていない")
+    _check(app.share.client is not None, "つなぎに行っていない")
+    page.mode.set("off")
+    page._save()
+    app.update()
+    _check(app.share.client is None, "止まっていない")
+    app.show("settings")
+    app.update()
+
+
+step("PC間で共有の画面", share_page)
+
 st = app._pages["settings"]
 step("設定: プリセット", lambda: (st._official(), st._vanilla(), app.update()))
 step("設定: 倍率の手入力を読み戻す",

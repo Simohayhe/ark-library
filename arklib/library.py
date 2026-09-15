@@ -86,6 +86,20 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS deletions (
+    kind       TEXT NOT NULL,
+    key        TEXT NOT NULL,
+    deleted_at REAL NOT NULL,
+    PRIMARY KEY (kind, key)
+);
+
+CREATE TABLE IF NOT EXISTS sync_state (
+    kind TEXT NOT NULL,
+    key  TEXT NOT NULL,
+    at   REAL NOT NULL,
+    PRIMARY KEY (kind, key)
+);
+
 CREATE TABLE IF NOT EXISTS imported_files (
     path       TEXT PRIMARY KEY,
     mtime      REAL NOT NULL,
@@ -101,16 +115,43 @@ def default_db_path():
     return os.path.join(base, APP_DIR_NAME, "library.db")
 
 
+def sync_key(row):
+    """PC をまたいで同じ個体だと分かるキー。
+
+    ゲーム内の DinoID があればそれ。手入力などで無いものは
+    「種族 + 名前 + レベル + サーバー」で見る (ライブラリ内の重複判定と同じ)。
+    uid は PC ごとに別の番号になるので使えない。
+    """
+    ark_id = row["ark_id"] if not isinstance(row, dict) else row.get("ark_id")
+    if ark_id:
+        return "id:%d" % int(ark_id)
+    get = row.get if isinstance(row, dict) else (lambda k: row[k])
+    return "nm:%s|%s|%s|%s" % (get("species_bp"), get("name"), get("level"),
+                               get("server"))
+
+
 class Library(object):
     def __init__(self, path=None):
         self.path = path or default_db_path()
         d = os.path.dirname(self.path)
         if d and not os.path.isdir(d):
             os.makedirs(d)
-        self.db = sqlite3.connect(self.path)
+        self.db = sqlite3.connect(self.path, timeout=15.0)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        self._migrate()
         self.db.commit()
+
+    def _migrate(self):
+        """古い DB に足りない列を足す。
+
+        設定は「いつ変わったか」が分からないと他の PC と突き合わせられない
+        ので、あとから updated_at を足せるようにしてある。
+        """
+        cols = [r["name"] for r in self.db.execute("PRAGMA table_info(settings)")]
+        if "updated_at" not in cols:
+            self.db.execute("ALTER TABLE settings "
+                            "ADD COLUMN updated_at REAL NOT NULL DEFAULT 0")
 
     def fix_genderless(self, species_db):
         """性別が無い種族の個体を U 表記に直す (古いデータの手当て)。
@@ -190,8 +231,34 @@ class Library(object):
         return cr.uid, action
 
     def delete(self, uid):
+        # 他の PC と同期しているとき、消した個体が向こうから戻ってこないように
+        # 「消した」ことも覚えておく
+        row = self.db.execute("SELECT * FROM creatures WHERE uid = ?",
+                              (uid,)).fetchone()
+        if row is not None:
+            self.mark_deleted("creature", sync_key(row))
         self.db.execute("DELETE FROM creatures WHERE uid = ?", (uid,))
         self.db.commit()
+
+    # ---- 消した記録 (同期用) -------------------------------------------
+
+    def mark_deleted(self, kind, key, when=None):
+        self.db.execute(
+            "INSERT INTO deletions (kind, key, deleted_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(kind, key) DO UPDATE SET deleted_at = excluded.deleted_at",
+            (kind, key, time.time() if when is None else float(when)))
+        self.db.commit()
+
+    def deletions_since(self, since=0.0):
+        return [(r["kind"], r["key"], r["deleted_at"]) for r in self.db.execute(
+            "SELECT kind, key, deleted_at FROM deletions WHERE deleted_at > ?",
+            (float(since or 0.0),))]
+
+    def deleted_at(self, kind, key):
+        row = self.db.execute(
+            "SELECT deleted_at FROM deletions WHERE kind = ? AND key = ?",
+            (kind, key)).fetchone()
+        return row["deleted_at"] if row else None
 
     def update_fields(self, uid, **fields):
         """メモ・名前・状態などの部分更新。"""
@@ -332,11 +399,13 @@ class Library(object):
 
     # ---- 設定 ----------------------------------------------------------
 
-    def set_setting(self, key, value):
+    def set_setting(self, key, value, updated_at=None):
         self.db.execute(
-            "INSERT INTO settings (key, value) VALUES (?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (key, json.dumps(value, ensure_ascii=False)))
+            "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+            "updated_at = excluded.updated_at",
+            (key, json.dumps(value, ensure_ascii=False),
+             time.time() if updated_at is None else float(updated_at)))
         self.db.commit()
 
     def get_setting(self, key, default=None):
