@@ -49,6 +49,10 @@ _COLOR_RE = re.compile(
     r"R=(-?[\d.]+),G=(-?[\d.]+),B=(-?[\d.]+),A=(-?[\d.]+)")
 
 
+# ロストコロニーのスキルツリーが付ける刷り込み。この3段階しかない
+SKILL_IMPRINTS = (0.10, 0.20, 0.30)
+
+
 class ExportedCreature(object):
     """ini から読めた生の情報。種族の解決と逆算はまだしていない。"""
 
@@ -90,7 +94,12 @@ class ExportedCreature(object):
         (1 未満) なら交配産とみなす。
 
         飼い主もテイマーも刷り込み者も居なければ野生。
+
+        刷り込みが乗っていても、交配産とは限らない。ロストコロニーの
+        スキルツリーは、野生をテイムしただけで 10/20/30% を付ける。
         """
+        if self.skill_tree_imprint():
+            return STATE_TAMED
         if (self.imprinter or self.imprint > 0
                 or (self.baby_age is not None and self.baby_age < 1.0)
                 or self.mother_ark_id or self.father_ark_id):
@@ -98,6 +107,20 @@ class ExportedCreature(object):
         if self.name or self.tamer or self.tribe or self.owner:
             return STATE_TAMED
         return STATE_WILD
+
+    def skill_tree_imprint(self):
+        """スキルツリーで付いた刷り込みか。
+
+        ロストコロニーのスキルツリーには、テイムした相手に刷り込みを
+        乗せるものがあり、10% / 20% / 30% の3段階。野生をテイムしただけ
+        なので、親も刷り込み者も居らず、赤ちゃんでもない。
+        交配で育てたものは、この3つにぴったり一致してもどれかが埋まる。
+        """
+        if self.imprinter or self.mother_ark_id or self.father_ark_id:
+            return False
+        if self.baby_age is not None and self.baby_age < 1.0:
+            return False
+        return any(abs(self.imprint - v) < 0.005 for v in SKILL_IMPRINTS)
 
     def __repr__(self):
         return ("<ExportedCreature %s Lv%d %s>"
