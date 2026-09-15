@@ -84,12 +84,47 @@ class AutoImport(object):
 
     def naming_stats(self, species_bp=None):
         """名前に入れるステータス。種族ごとの設定があればそちらを使う。"""
-        if species_bp:
-            own = self.st.library.get_setting("naming_stats_%s" % species_bp, None)
-            if own:
-                return [int(s) for s in own]
-        got = self.get("naming_stats")
-        return list(got) if got else list(naming.DEFAULT_STATS)
+        return self.naming_rule(species_bp)["stats"]
+
+    def naming_rule(self, species_bp=None):
+        """命名規則をひとまとめで返す。
+
+        種族ごとの設定があればそれを使い、無い項目は全種族共通に落とす。
+        戻り値 {stats, mode, with_sex, mark}
+        """
+        base = {
+            "stats": list(self.get("naming_stats") or naming.DEFAULT_STATS),
+            "mode": self.get("naming_mode") or naming.MODE_ALL,
+            "with_sex": bool(self.get("naming_with_sex")),
+            "mark": self.get("naming_mutation_mark") or "",
+        }
+        if not species_bp:
+            return base
+        own = self.st.library.get_setting("naming_rule_%s" % species_bp, None)
+        if own is None:
+            # 昔の「ステータスだけ」の設定からの引き継ぎ
+            legacy = self.st.library.get_setting("naming_stats_%s" % species_bp,
+                                                 None)
+            if legacy:
+                base["stats"] = [int(x) for x in legacy]
+            return base
+        if own.get("stats") is not None:
+            base["stats"] = [int(x) for x in own["stats"]]
+        for key in ("mode", "with_sex", "mark"):
+            if own.get(key) is not None:
+                base[key] = own[key]
+        base["with_sex"] = bool(base["with_sex"])
+        return base
+
+    def set_naming_rule(self, species_bp, rule):
+        """種族ごとの命名規則を保存する。rule=None で共通設定に戻す。"""
+        self.st.library.set_setting("naming_rule_%s" % species_bp, rule)
+        if rule is None:
+            self.st.library.set_setting("naming_stats_%s" % species_bp, None)
+
+    def has_own_naming(self, species_bp):
+        return self.st.library.get_setting(
+            "naming_rule_%s" % species_bp, None) is not None
 
     def folder(self):
         return self.st.library.get_setting("import_folder", "") or ""
@@ -232,11 +267,10 @@ class AutoImport(object):
         goals = self.goals_for(cr.species_bp, stat_list)
         check = records.check(cr, others, stat_list, goals=goals)
 
-        name_text = naming.make_name(
-            cr, self.naming_stats(cr.species_bp),
-            bool(self.get("naming_with_sex")),
-            mutation_mark=self.get("naming_mutation_mark") or "",
-            mode=self.get("naming_mode") or naming.MODE_ALL)
+        rule = self.naming_rule(cr.species_bp)
+        name_text = naming.make_name(cr, rule["stats"], rule["with_sex"],
+                                     mutation_mark=rule["mark"],
+                                     mode=rule["mode"])
         if self.get("naming_fill_empty") and not cr.name:
             cr.name = name_text
 

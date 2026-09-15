@@ -50,7 +50,8 @@ ROLE_JA = {ROLE_ADMIN: "管理者 (読み書き可)", ROLE_MEMBER: "メンバー
 
 # 共有する設定のあたま。これ以外 (取り込みフォルダ・テーマ・音量など) は
 # その PC のものなので配らない
-SHARED_SETTING_PREFIXES = ("naming_stats_", "plan_goals_", "ideal_")
+SHARED_SETTING_PREFIXES = ("naming_stats_", "naming_rule_",
+                           "plan_goals_", "ideal_")
 
 
 def shared_setting(key):

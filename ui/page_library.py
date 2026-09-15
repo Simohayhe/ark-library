@@ -486,12 +486,9 @@ class LibraryPage(tk.Frame):
         c = self._selected()
         if c is None:
             return
-        auto = self.app.autoimport
-        text = naming.make_name(
-            c, auto.naming_stats(self.species_bp),
-            bool(auto.get("naming_with_sex")),
-            mutation_mark=auto.get("naming_mutation_mark") or "",
-            mode=auto.get("naming_mode") or naming.MODE_ALL)
+        rule = self.app.autoimport.naming_rule(self.species_bp)
+        text = naming.make_name(c, rule["stats"], rule["with_sex"],
+                                mutation_mark=rule["mark"], mode=rule["mode"])
         self.clipboard_clear()
         self.clipboard_append(text)
         self.detail.configure(text="クリップボードにコピーしました:  %s" % text)

@@ -89,6 +89,73 @@ def main():
     r4 = records.check(mk("生者", uid=None, hp=50), old + [dead], stat_list)
     check("2.12 死んだ個体は比較から外す", r4.per_stat[ark.HEALTH], records.NEW)
 
+    # ---- [3] 種族ごとの命名規則 -------------------------------------
+    print("\n[3] 種族ごとの命名規則")
+    import tempfile
+
+    from arklib.library import Library
+    from ui.autoimport import AutoImport
+
+    lib = Library(os.path.join(tempfile.mkdtemp(prefix="naming_"), "n.db"))
+    auto = AutoImport.__new__(AutoImport)          # 画面は作らずに設定だけ使う
+    auto.st = type("St", (), {"library": lib})()
+    common = {"naming_stats": [ark.HEALTH, ark.STAMINA, ark.WEIGHT, ark.MELEE],
+              "naming_mode": naming.MODE_ALL,
+              "naming_with_sex": True,
+              "naming_mutation_mark": ""}
+    auto.get = lambda k: common.get(k)
+
+    boar = Creature(species_bp="bp/Daeodon", species_name="Daeodon", sex=MALE)
+    for st_, lv in ((ark.HEALTH, 44), (ark.STAMINA, 20), (ark.FOOD, 41),
+                    (ark.WEIGHT, 37), (ark.MELEE, 26)):
+        boar.levels_wild[st_] = lv
+    boar.mutations_father = 23
+
+    def named(bp):
+        r = auto.naming_rule(bp)
+        return naming.make_name(boar, r["stats"], r["with_sex"],
+                                mutation_mark=r["mark"], mode=r["mode"])
+
+    check("3.1 未設定なら共通の設定", named("bp/Daeodon"), "M H44 S20 W37 M26")
+    auto.set_naming_rule("bp/Daeodon",
+                         {"stats": [ark.HEALTH, ark.FOOD, ark.WEIGHT, ark.MELEE],
+                          "mode": naming.MODE_ALL, "with_sex": True, "mark": ""})
+    check("3.2 ダエオドンだけ食料を乗せる", named("bp/Daeodon"), "M H44 F41 W37 M26")
+    check("3.3 他の種族は変わらない", named("bp/Argentavis"), "M H44 S20 W37 M26")
+    check("3.4 この種族だけの設定だと分かる",
+          auto.has_own_naming("bp/Daeodon"), True)
+    check("3.5 触っていない種族は共通のまま",
+          auto.has_own_naming("bp/Argentavis"), False)
+
+    # 形式も種族ごとに変えられる (オーバーフロー系統だけ OF にする)
+    auto.set_naming_rule("bp/Rex", {"stats": [], "mode": naming.MODE_MUTATIONS,
+                                    "with_sex": True, "mark": ""})
+    check("3.6 Rex だけ OF 形式", named("bp/Rex"), "M 23")
+    check("3.7 ダエオドンは巻き添えにならない",
+          named("bp/Daeodon"), "M H44 F41 W37 M26")
+
+    # 性別と変異マークも種族ごと
+    auto.set_naming_rule("bp/Otter", {"stats": [ark.HEALTH], "mode": naming.MODE_ALL,
+                                      "with_sex": False, "mark": "*"})
+    boar.levels_mut[ark.HEALTH] = 2
+    check("3.8 性別なし・変異マークあり", named("bp/Otter"), "H46*")
+    boar.levels_mut[ark.HEALTH] = 0
+
+    auto.set_naming_rule("bp/Daeodon", None)
+    check("3.9 共通設定に戻せる", named("bp/Daeodon"), "M H44 S20 W37 M26")
+    check("3.10 戻したら印も消える", auto.has_own_naming("bp/Daeodon"), False)
+
+    # 昔の「ステータスだけ」の設定も読める
+    lib.set_setting("naming_stats_bp/Trike", [ark.HEALTH, ark.MELEE])
+    check("3.11 古い設定からの引き継ぎ", named("bp/Trike"), "M H44 M26")
+
+    # 共通の形式を変えると、種族ごとに決めていないものが追従する
+    common["naming_mode"] = naming.MODE_ZEROS
+    check("3.12 共通を変えると未設定の種族が追従",
+          named("bp/Argentavis"), "M 0なし")
+    check("3.13 種族ごとに決めた方は動かない", named("bp/Rex"), "M 23")
+    lib.close()
+
     print("\n" + "=" * 60)
     print("%d 件成功 / %d 件失敗" % (len(PASS), len(FAIL)))
     if FAIL:

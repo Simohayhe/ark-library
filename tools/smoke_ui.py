@@ -260,16 +260,30 @@ step("通知: 設定の保存", lambda: (al._save_naming(), al._save_overlay(),
                                  al._save_auto(), app.update()))
 
 def _naming_dialog():
+    from arklib import ark, naming
     from ui.naming_dialog import SpeciesNamingDialog
-    d = SpeciesNamingDialog(lib_page, app, lib_page.species_bp,
+    bp = lib_page.species_bp
+    d = SpeciesNamingDialog(lib_page, app, bp,
                             lib_page.species.display_name, lib_page.stat_list)
     app.update()
+    # 形式も種族ごとに変えられる
+    d.mode.set(naming.MODE_MUTATIONS)
     d._save()
-    _check(app.autoimport.naming_stats(lib_page.species_bp) ==
-           app.state_obj.library.get_setting(
-               "naming_stats_%s" % lib_page.species_bp), "種族別設定が効かない")
+    app.update()
+    _check(app.autoimport.has_own_naming(bp), "種族別設定が保存されない")
+    _check(app.autoimport.naming_rule(bp)["mode"] == naming.MODE_MUTATIONS,
+           "形式が種族ごとに効かない")
+    # 食料を足せるか (ダエオドン的な使い方)
+    if ark.FOOD in d.vars:
+        d.mode.set(naming.MODE_ALL)
+        d.vars[ark.FOOD].set(True)
+        d._save()
+        app.update()
+        _check(ark.FOOD in app.autoimport.naming_rule(bp)["stats"],
+               "食料が入らない")
     d._clear()
     app.update()
+    _check(not app.autoimport.has_own_naming(bp), "共通設定に戻らない")
     d.destroy()
 
 
