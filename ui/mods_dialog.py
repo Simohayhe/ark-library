@@ -23,7 +23,7 @@ class ModsDialog(tk.Toplevel):
         tk.Toplevel.__init__(self, parent, bg=theme.BG)
         self.app = app
         self.st = app.state_obj
-        self.title("Mod の生物を追加")
+        self.title("Mod 生物を追加")
         self.transient(parent)
         self.geometry("720x560")
 
@@ -32,7 +32,7 @@ class ModsDialog(tk.Toplevel):
         self._alive = True
         self.catalog = []
 
-        tk.Label(self, text="Mod の生物を追加", bg=theme.BG, fg=theme.INK,
+        tk.Label(self, text="Mod 生物を追加", bg=theme.BG, fg=theme.INK,
                  font=theme.F.get("head")).pack(anchor="w", padx=18, pady=(14, 2))
         tk.Label(self, text="ARK Smart Breeding が配っている Mod のデータを入れます。"
                             "入れた Mod の生物は、次の起動から取り込めるようになります。",
@@ -55,7 +55,7 @@ class ModsDialog(tk.Toplevel):
         row.pack(fill="x")
         theme.RoundButton(row, "外す", self._remove, kind="danger",
                           bg=theme.CARD).pack(side="left")
-        theme.RoundButton(row, "ファイルから入れる", self._install_file, kind="soft",
+        theme.RoundButton(row, "ファイルから読み込む", self._install_file, kind="soft",
                           bg=theme.CARD).pack(side="left", padx=6)
 
         # 選べるもの
@@ -87,7 +87,7 @@ class ModsDialog(tk.Toplevel):
 
         box = tk.Frame(self, bg=theme.BG)
         box.pack(pady=(6, 14))
-        theme.RoundButton(box, "これを入れる", self._install_selected,
+        theme.RoundButton(box, "適用する", self._install_selected,
                           kind="primary", bg=theme.BG).pack(side="left", padx=4)
         theme.RoundButton(box, "閉じる", self.destroy, kind="ghost",
                           bg=theme.BG).pack(side="left", padx=4)

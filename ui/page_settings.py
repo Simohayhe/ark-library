@@ -99,15 +99,15 @@ class SettingsPage(tk.Frame):
                  font=theme.F.get("cute_b")).pack(anchor="w")
         r1 = tk.Frame(sb, bg=theme.CARD)
         r1.pack(fill="x", pady=(6, 2))
-        theme.RoundButton(r1, "自分のサーバーから読む", self._from_local,
+        theme.RoundButton(r1, "自サーバーから読み込む", self._from_local,
                           kind="primary", bg=theme.CARD).pack(side="left", padx=(0, 4))
-        theme.RoundButton(r1, "ini ファイルを選ぶ", self._from_ini, kind="soft",
+        theme.RoundButton(r1, "ini ファイルを読み込む", self._from_ini, kind="soft",
                           bg=theme.CARD).pack(side="left", padx=4)
         theme.RoundButton(r1, "Export Gun の倍率ファイル", self._from_gun,
                           kind="soft", bg=theme.CARD).pack(side="left", padx=4)
         theme.RoundButton(r1, "公式サーバー相当", self._official, kind="soft",
                           bg=theme.CARD).pack(side="left", padx=4)
-        theme.RoundButton(r1, "すべて 1 倍", self._vanilla, kind="soft",
+        theme.RoundButton(r1, "すべて 1.0 倍", self._vanilla, kind="soft",
                           bg=theme.CARD).pack(side="left", padx=4)
 
         cur = theme.Card(right, bg=theme.BG)
@@ -222,7 +222,7 @@ class SettingsPage(tk.Frame):
                           bg=theme.CARD).pack(side="right")
         theme.RoundButton(arow, "GitHub", self._open_github, kind="soft",
                           bg=theme.CARD).pack(side="right", padx=6)
-        theme.RoundButton(arow, "Mod の生物を追加", self._open_mods, kind="soft",
+        theme.RoundButton(arow, "Mod 生物を追加", self._open_mods, kind="soft",
                           bg=theme.CARD).pack(side="right", padx=6)
         tk.Label(ab, text="ステータス計算と種族データは ARKStatsExtractor "
                          "(MIT, (c) 2015 cadon) を元にしています。",
@@ -490,7 +490,7 @@ class _LocalServerDialog(tk.Toplevel):
         box.pack(pady=12)
         theme.RoundButton(box, "読み込む", self._ok, kind="primary",
                           bg=theme.BG).pack(side="left", padx=4)
-        theme.RoundButton(box, "やめる", self.destroy, kind="ghost",
+        theme.RoundButton(box, "キャンセル", self.destroy, kind="ghost",
                           bg=theme.BG).pack(side="left", padx=4)
         self.grab_set()
 

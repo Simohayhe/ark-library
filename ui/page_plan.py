@@ -18,13 +18,13 @@ from . import theme
 from .page_library import SHORT_JA, stat_columns
 from .table import Col, Table
 
-TABS = [("pairs", "おすすめペア"), ("plan", "仕上げの手順"),
+TABS = [("pairs", "推奨ペア"), ("plan", "交配手順"),
         ("mutation", "変異狙い"), ("color", "色")]
 
 # 狙い方のプリセット。ステータスごとに 最高(MAX) / ゼロ(MIN) / 無視(None)
 PRESETS = [
-    ("最高ステ狙い", "all_max"),
-    ("実用型 (酸素・食料をゼロ)", "practical"),
+    ("最大ステータス", "all_max"),
+    ("実用型 (酸素・食料ゼロ)", "practical"),
     ("Lv1個体 (全ステゼロ)", "level1"),
 ]
 
@@ -70,7 +70,7 @@ class PlanPage(tk.Frame):
             self.species_box.pack(side="left", padx=12)
             self.species_box.bind("<<ComboboxSelected>>",
                                   lambda _e: self._on_species())
-        theme.RoundButton(head, "計算し直す", self.recalc, kind="primary",
+        theme.RoundButton(head, "再計算", self.recalc, kind="primary",
                           bg=theme.BG).pack(side="right")
 
         # 対象ステータスの選択
@@ -149,7 +149,7 @@ class PlanPage(tk.Frame):
             return
         self.species_box.configure(values=names)
         if not summary:
-            self.goal.configure(text="ライブラリが空です。まず取り込んでください。")
+            self.goal.configure(text="ライブラリが空です。先にインポートしてください。")
             self._clear()
             return
         idx = 0
@@ -184,7 +184,7 @@ class PlanPage(tk.Frame):
         if c is None:
             self.focus_label.configure(text="交配計画")
         else:
-            extra = ("  (この種族は性別が無いので、どの個体とも組めます)"
+            extra = ("  (性別なしの種族。どの個体とも交配可)"
                      if c.is_genderless else "")
             self.focus_label.configure(
                 text="交配計画  選択中: %s %s%s"
@@ -205,7 +205,7 @@ class PlanPage(tk.Frame):
     def _build_stat_bar(self):
         for w in self.stat_bar.winfo_children():
             w.destroy()
-        tk.Label(self.stat_bar, text="狙い", bg=theme.BG, fg=theme.INK_SUB,
+        tk.Label(self.stat_bar, text="目標", bg=theme.BG, fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(side="left", padx=(0, 6))
         if self.species is None:
             return
@@ -217,7 +217,7 @@ class PlanPage(tk.Frame):
             chip.pack(side="left", padx=(0, 4))
             self.goal_chips[s] = chip
 
-        tk.Label(self.stat_bar, text="まとめて:", bg=theme.BG, fg=theme.INK_SUB,
+        tk.Label(self.stat_bar, text="一括設定:", bg=theme.BG, fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(side="left", padx=(12, 4))
         self.preset_var = tk.StringVar()
         box = ttk.Combobox(self.stat_bar, textvariable=self.preset_var, width=22,
@@ -337,7 +337,7 @@ class PlanPage(tk.Frame):
         if self.pair_table is None:
             bar = tk.Frame(self.pair_holder, bg=theme.CARD)
             bar.pack(fill="x", padx=10, pady=(8, 0))
-            tk.Checkbutton(bar, text="選んだ個体を含むペアだけ",
+            tk.Checkbutton(bar, text="選択中の個体を含むペアのみ",
                            variable=self.only_focus, command=self._refill_pairs,
                            bg=theme.CARD, fg=theme.INK, selectcolor=theme.FIELD,
                            activebackground=theme.CARD, activeforeground=theme.INK,
@@ -354,16 +354,16 @@ class PlanPage(tk.Frame):
                         sort_key=lambda r: r.get("_tops", 0)),
                     Col("ideal", "理想", 56, align="e",
                         sort_key=lambda r: r.get("_ideal", -1),
-                        tooltip="最良の子が理想個体のステータスにどれだけ届くか"),
+                        tooltip="最良の子が理想個体のステータスに到達する割合"),
                     Col("best", "最良の子", 72, align="e", numeric=True),
                     Col("exp", "期待Lv", 66, align="e", numeric=True),
                     Col("prob", "当たり率", 70, align="e",
                         sort_key=lambda r: r.get("_prob", 0)),
-                    Col("eggs", "平均何匹", 72, align="e",
+                    Col("eggs", "平均必要数", 72, align="e",
                         sort_key=lambda r: -r.get("_eggs", 0)),
                     Col("mut", "変異率", 60, align="e",
                         sort_key=lambda r: r.get("_mut", 0)),
-                    Col("diff", "分かれ目", 190)]
+                    Col("diff", "差分ステータス", 190)]
             self.pair_table = Table(self.pair_holder, cols, bg=theme.CARD,
                                     min_rows=10, cell_style=self._pair_cell)
             self.pair_table.pack(fill="both", expand=True)
@@ -421,9 +421,9 @@ class PlanPage(tk.Frame):
             rows.append(row)
 
         if idl.empty:
-            note = "「理想個体」を決めると、この子が理想にどれだけ届くかが出ます"
+            note = "理想個体を設定すると、子の到達率が表示されます"
         elif me is not None and not only:
-            note = "選んだ個体には色が付きます"
+            note = "選択中の個体を強調表示中"
         else:
             note = ""
         if getattr(self, "pair_note", None) is not None:
@@ -556,13 +556,13 @@ class PlanPage(tk.Frame):
 
         head = tk.Frame(self.color_holder, bg=theme.BG)
         head.pack(fill="x")
-        tk.Label(head, text="狙う色を選ぶ (領域ごと)", bg=theme.BG, fg=theme.INK,
+        tk.Label(head, text="目標の色を選択 (領域ごと)", bg=theme.BG, fg=theme.INK,
                  font=theme.F.get("cute_b")).pack(side="left")
         tk.Label(head, text="色は領域ごとに、どちらかの親のものをそのまま受け継ぐ "
                            "(半々)。混ざらない。",
                  bg=theme.BG, fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(side="left", padx=10)
-        theme.RoundButton(head, "選び直す", self._clear_color_targets, kind="ghost",
+        theme.RoundButton(head, "選択をリセット", self._clear_color_targets, kind="ghost",
                           bg=theme.BG).pack(side="right")
 
         picker = tk.Frame(self.color_holder, bg=theme.BG)
@@ -577,7 +577,7 @@ class PlanPage(tk.Frame):
                                                                        pady=(6, 2))
             have = inv.get(i) or {}
             if not have:
-                tk.Label(box, text="(この領域の色を持つ個体がいない)", bg=theme.CARD,
+                tk.Label(box, text="(この領域の色を持つ個体なし)", bg=theme.CARD,
                          fg=theme.INK_SUB,
                          font=theme.F.get("small")).pack(anchor="w", padx=8,
                                                           pady=(0, 6))
@@ -596,10 +596,10 @@ class PlanPage(tk.Frame):
             cols = [Col("male", "♂ オス", 150), Col("female", "♀ メス", 150),
                     Col("prob", "出る確率", 78, align="e",
                         sort_key=lambda r: r.get("_prob", 0)),
-                    Col("eggs", "平均何匹", 78, align="e",
+                    Col("eggs", "平均必要数", 78, align="e",
                         sort_key=lambda r: -r.get("_eggs", 0)),
-                    Col("sure", "確定している領域", 170),
-                    Col("risky", "五分五分の領域", 170)]
+                    Col("sure", "確定する領域", 170),
+                    Col("risky", "50/50 の領域", 170)]
             self.color_table = Table(self.color_holder, cols, bg=theme.CARD,
                                      min_rows=8)
         self.color_table.pack(fill="both", expand=True)
@@ -607,7 +607,7 @@ class PlanPage(tk.Frame):
         targets = {i: c for i, c in self.color_targets.items() if c}
         if not targets:
             self.color_table.set_rows([{
-                "male": "↑ 上の色見本を押して、狙う色を選んでください",
+                "male": "↑ 上の色見本から目標の色を選択してください",
                 "female": "", "prob": "", "eggs": "", "sure": "", "risky": "",
             }], keep_sort=False)
             return
@@ -652,7 +652,7 @@ class PlanPage(tk.Frame):
                         sort_key=lambda r: r.get("_mut", 0)),
                     Col("counters", "変異カウンタ", 120, align="center"),
                     Col("tops", "目標達成", 70, align="e"),
-                    Col("note", "ひとこと", 300)]
+                    Col("note", "備考", 300)]
             self.mut_table = Table(self.mut_holder, cols, bg=theme.CARD,
                                    min_rows=10)
             self.mut_table.pack(fill="both", expand=True)

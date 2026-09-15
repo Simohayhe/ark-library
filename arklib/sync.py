@@ -46,7 +46,7 @@ PROTOCOL = 1
 # 合言葉の種類
 ROLE_ADMIN = "admin"      # 読み書きできる (自分の PC・任せる相手)
 ROLE_MEMBER = "member"    # 読むだけ (友達に配る用)
-ROLE_JA = {ROLE_ADMIN: "管理者 (書き込みもできる)", ROLE_MEMBER: "メンバー (見るだけ)"}
+ROLE_JA = {ROLE_ADMIN: "管理者 (読み書き可)", ROLE_MEMBER: "メンバー (閲覧のみ)"}
 
 # 共有する設定のあたま。これ以外 (取り込みフォルダ・テーマ・音量など) は
 # その PC のものなので配らない
@@ -322,7 +322,7 @@ class SyncServer(object):
                                             "needs_token": bool(owner.tokens),
                                             "role": role})
                 if role is None:
-                    return self._send(403, {"error": "合言葉が違います"})
+                    return self._send(403, {"error": "認証に失敗しました"})
                 if url.path == "/pull":
                     q = parse_qs(url.query)
                     since = float((q.get("since") or ["0"])[0])
@@ -338,18 +338,18 @@ class SyncServer(object):
             def do_POST(self):
                 role, who = self._role()
                 if role is None:
-                    return self._send(403, {"error": "合言葉が違います"})
+                    return self._send(403, {"error": "認証に失敗しました"})
                 if role != ROLE_ADMIN:
                     return self._send(
-                        403, {"error": "この合言葉では書き込めません "
-                                       "(メンバーは見るだけです)"})
+                        403, {"error": "このキーでは書き込めません "
+                                       "(メンバーは閲覧のみ)"})
                 if urlparse(self.path).path != "/push":
                     return self._send(404, {"error": "not found"})
                 n = int(self.headers.get("Content-Length") or 0)
                 try:
                     payload = json.loads(self.rfile.read(n).decode("utf-8"))
                 except ValueError:
-                    return self._send(400, {"error": "壊れたデータです"})
+                    return self._send(400, {"error": "不正なデータです"})
                 lib = Library(owner.db_path)
                 try:
                     counts = apply_changes(lib, payload)
@@ -420,7 +420,7 @@ class SyncClient(object):
         self.on_status = on_status
         self._stop = threading.Event()
         self.thread = None
-        self.status = "止まっています"
+        self.status = "停止中"
         self.error = ""
         self.last_ok = None
         self.pulled = 0
@@ -438,7 +438,7 @@ class SyncClient(object):
     def stop(self):
         self._stop.set()
         self.thread = None
-        self.status = "止まっています"
+        self.status = "停止中"
 
     @property
     def running(self):
@@ -488,12 +488,12 @@ class SyncClient(object):
                     pulled, pushed = self.sync_once(lib)
                     self.error = ""
                     self.last_ok = time.time()
-                    self.status = "つながっています"
+                    self.status = "接続中"
                     if (pulled or pushed) and self.on_change:
                         self.on_change(pulled, pushed)
                 except Exception as e:
                     self.error = _friendly(e)
-                    self.status = "つながりません"
+                    self.status = "接続失敗"
                 if self.on_status:
                     try:
                         self.on_status(self.status, self.error)
@@ -533,7 +533,7 @@ def ping(url, token=""):
 
 def _friendly(e):
     if isinstance(e, URLError):
-        return "つながりません (%s)" % getattr(e, "reason", e)
+        return "接続できません (%s)" % getattr(e, "reason", e)
     return "%s" % e
 
 

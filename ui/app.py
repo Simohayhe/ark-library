@@ -21,9 +21,9 @@ DEFAULT_THEME = "modern"
 
 NAV = [
     ("library", "ライブラリ", "🦖"),
-    ("import", "取り込み", "📥"),
-    ("alerts", "取り込み通知", "🔔"),
-    ("share", "PC間で共有", "🔗"),
+    ("import", "インポート", "📥"),
+    ("alerts", "通知", "🔔"),
+    ("share", "共有", "🔗"),
     ("settings", "設定", "⚙"),
 ]
 
@@ -131,13 +131,16 @@ class App(tk.Tk):
         nav.pack(side="left", fill="y")
         nav.pack_propagate(False)
 
-        tk.Label(nav, text="🦖  ARK\nライブラリ", bg=theme.BG_SOFT, fg=theme.INK,
+        tk.Label(nav, text=("🦖  ARK\nライブラリ" if theme.icons()
+                            else "ARK\nLIBRARY"),
+                 bg=theme.BG_SOFT, fg=theme.INK,
                  font=theme.F.get("head"), justify="left").pack(
             anchor="w", padx=16, pady=(18, 14))
 
         self._nav_buttons = {}
         for key, label_text, icon in NAV:
-            b = _NavButton(nav, "%s  %s" % (icon, label_text),
+            b = _NavButton(nav, ("%s  %s" % (icon, label_text)
+                                 if theme.icons() else label_text),
                            lambda k=key: self.show(k))
             b.pack(fill="x", padx=10, pady=2)
             self._nav_buttons[key] = b

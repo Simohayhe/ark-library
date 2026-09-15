@@ -70,6 +70,69 @@ PALETTES = {
         "DANGER_HOVER": "#FEE2E2",
         "ON_ACCENT": "#FFFFFF",
     },
+    "slate": {
+        # 落ち着いたグラファイト。彩度を極力使わず、角は浅く、余白で見せる。
+        # 絵文字アイコンは出さない (ICONS=False)。
+        "NAME": "スレート (ダーク)",
+        "DARK": True,
+        "FONT": "segoe",
+        "ICONS": False,
+        "RADIUS": 6,
+        "CARD_RADIUS": 8,
+        "BG": "#16181D",
+        "BG_SOFT": "#1C1F26",
+        "CARD": "#202430",
+        "SHADOW": "#101216",
+        "LINE": "#2E333F",
+        "FIELD": "#272C38",
+        "INK": "#E6E8EC",
+        "INK_SUB": "#8B92A0",
+        "PINK": "#5B8DEF",     # 主役は落ち着いた青
+        "PINK_DK": "#4374D9",
+        "LAV": "#8B7BE8",
+        "MINT": "#3FBF8F",
+        "SKY": "#4FA8D8",
+        "LEMON": "#D9A441",
+        "PEACH": "#D9814F",
+        "RED": "#E05B5B",
+        "HOVER_SOFT": "#2A2F3B",
+        "HOVER_LAV": "#7A69DB",
+        "HOVER_MINT": "#34A87C",
+        "DANGER_BG": "#33222A",
+        "DANGER_HOVER": "#422A33",
+        "ON_ACCENT": "#FFFFFF",
+    },
+    "paper": {
+        # 明るいほうのおしゃれ。ほぼ無彩色で、線と余白だけで区切る。
+        "NAME": "ペーパー (ライト)",
+        "DARK": False,
+        "FONT": "segoe",
+        "ICONS": False,
+        "RADIUS": 6,
+        "CARD_RADIUS": 8,
+        "BG": "#F7F7F5",
+        "BG_SOFT": "#EFEFEC",
+        "CARD": "#FFFFFF",
+        "SHADOW": "#E8E8E4",
+        "LINE": "#E0E0DB",
+        "FIELD": "#F4F4F1",
+        "INK": "#1C1C1A",
+        "INK_SUB": "#75756E",
+        "PINK": "#2F6F62",     # 主役は深緑
+        "PINK_DK": "#255A50",
+        "LAV": "#5A5A8C",
+        "MINT": "#2F7D5E",
+        "SKY": "#2E6E8E",
+        "LEMON": "#9A7218",
+        "PEACH": "#A65A2E",
+        "RED": "#B3413C",
+        "HOVER_SOFT": "#E4E4DF",
+        "HOVER_LAV": "#4A4A78",
+        "HOVER_MINT": "#256A4E",
+        "DANGER_BG": "#F8EDEC",
+        "DANGER_HOVER": "#F0DCDA",
+        "ON_ACCENT": "#FFFFFF",
+    },
     "cool": {
         "NAME": "かっこいい",
         "DARK": True,
@@ -130,7 +193,7 @@ def use(name):
     g = globals()
     g["RADIUS"], g["CARD_RADIUS"] = 999, 20      # 指定が無ければ丸ピル
     for k, v in pal.items():
-        if k not in ("NAME", "DARK", "FONT"):
+        if k not in ("NAME", "DARK", "FONT", "ICONS"):
             g[k] = v
     KIND_STYLE.clear()
     for key, icon, color, jp in KIND_BASE:
@@ -153,6 +216,11 @@ def _scheme():
 
 def dark():
     return bool((PALETTES.get(THEME) or {}).get("DARK"))
+
+
+def icons():
+    """ナビに絵文字を出すか。おしゃれ寄りのテーマでは出さない。"""
+    return (PALETTES.get(THEME) or {}).get("ICONS", True)
 
 
 def font_kind():

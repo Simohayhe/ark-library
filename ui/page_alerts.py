@@ -43,9 +43,9 @@ class AlertsPage(tk.Frame):
     # ---- 組み立て ------------------------------------------------------
 
     def _build(self):
-        tk.Label(self, text="取り込んだ瞬間", bg=theme.BG, fg=theme.INK,
+        tk.Label(self, text="通知", bg=theme.BG, fg=theme.INK,
                  font=theme.F.get("head")).pack(anchor="w", padx=16, pady=(14, 2))
-        tk.Label(self, text="ゲーム内でエクスポートしたときに、何をするか。",
+        tk.Label(self, text="ゲーム内でエクスポートした直後の動作を設定します。",
                  bg=theme.BG, fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(anchor="w", padx=16)
 
@@ -66,7 +66,7 @@ class AlertsPage(tk.Frame):
                self._save_auto)
         row = tk.Frame(b, bg=theme.CARD)
         row.pack(fill="x", pady=(4, 0))
-        tk.Label(row, text="見に行く間隔", bg=theme.CARD, fg=theme.INK_SUB,
+        tk.Label(row, text="監視間隔", bg=theme.CARD, fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(side="left")
         self.interval = tk.StringVar()
         box = ttk.Combobox(row, textvariable=self.interval, width=6,
@@ -74,7 +74,7 @@ class AlertsPage(tk.Frame):
                            values=INTERVAL_CHOICES)
         box.pack(side="left", padx=6)
         box.bind("<<ComboboxSelected>>", lambda _e: self._save_auto())
-        tk.Label(row, text="秒  (短いほど名前が早くコピーされます)",
+        tk.Label(row, text="秒  (短いほど反応が速くなります)",
                  bg=theme.CARD, fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(side="left")
         self.folder_label = tk.Label(b, text="", bg=theme.CARD, fg=theme.INK_SUB,
@@ -90,7 +90,7 @@ class AlertsPage(tk.Frame):
 
         mrow0 = tk.Frame(b2, bg=theme.CARD)
         mrow0.pack(fill="x", pady=(0, 4))
-        tk.Label(mrow0, text="作り方", bg=theme.CARD, fg=theme.INK_SUB,
+        tk.Label(mrow0, text="形式", bg=theme.CARD, fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(side="left", padx=(0, 6))
         self.name_mode = tk.StringVar()
         self._mode_labels = [label for _k, label, _h in naming.MODES]
@@ -108,12 +108,12 @@ class AlertsPage(tk.Frame):
         _check(b2, "作った名前をクリップボードにコピーする", self.name_copy,
                self._save_naming)
         self.name_sex = tk.BooleanVar()
-        _check(b2, "先頭に性別 (M / F / U) を付ける", self.name_sex, self._save_naming)
+        _check(b2, "先頭に性別 (M / F / U) を付加", self.name_sex, self._save_naming)
         self.name_fill = tk.BooleanVar()
         _check(b2, "ゲーム内で名前が付いていない個体は、この名前で登録する",
                self.name_fill, self._save_naming)
 
-        tk.Label(b2, text="入れるステータス", bg=theme.CARD, fg=theme.INK_SUB,
+        tk.Label(b2, text="対象ステータス", bg=theme.CARD, fg=theme.INK_SUB,
                  font=theme.F.get("small"), anchor="w").pack(fill="x", pady=(6, 0))
         srow = tk.Frame(b2, bg=theme.CARD)
         srow.pack(fill="x")
@@ -172,7 +172,7 @@ class AlertsPage(tk.Frame):
                             values=[label for _k, label in POSITIONS])
         pbox.pack(side="left", padx=6)
         pbox.bind("<<ComboboxSelected>>", lambda _e: self._save_overlay())
-        theme.RoundButton(b3, "出してみる", self._preview_overlay, kind="soft",
+        theme.RoundButton(b3, "プレビュー", self._preview_overlay, kind="soft",
                           bg=theme.CARD).pack(anchor="w", pady=(8, 0))
         tk.Label(b3, text="ARK が「フルスクリーン(専用)」だと Windows の仕様で"
                          "上に出せません。「ウィンドウ(フルスクリーン)」にしてください。",
@@ -354,7 +354,7 @@ class AlertsPage(tk.Frame):
                                 bool(self.name_sex.get()),
                                 mutation_mark=self.name_mark.get()[:2],
                                 mode=mode)
-        self.name_preview.configure(text="こうなります:  " + (text or "(何も入れない)"))
+        self.name_preview.configure(text="プレビュー:  " + (text or "(何も入れない)"))
 
     def _preview_overlay(self):
         self._save_overlay()

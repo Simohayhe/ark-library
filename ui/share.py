@@ -20,9 +20,9 @@ OPEN_CLOUDFLARE = "cf"        # Cloudflare トンネル (ルーターをいじ�
 OPEN_UPNP = "upnp"            # ルーターに自動で穴を開けてもらう
 
 OPEN_JA = {
-    OPEN_LAN: "家の中だけ",
+    OPEN_LAN: "LAN 内のみ",
     OPEN_CLOUDFLARE: "Cloudflare トンネル",
-    OPEN_UPNP: "UPnP でポートを開ける",
+    OPEN_UPNP: "UPnP 自動ポート開放",
 }
 
 PUMP_MS = 700
@@ -127,7 +127,7 @@ class Share(object):
                 self.st.library.path, port=self.port, tokens=self.tokens,
                 on_change=lambda counts: self._events.put(("server", counts)))
             if not self.server.start():
-                msg = self.server.error or "共有元にできませんでした"
+                msg = self.server.error or "共有元を起動できませんでした"
                 self.last_error = msg
                 self.server = None
                 return False, msg
@@ -136,14 +136,14 @@ class Share(object):
             return ok, note
         if self.mode == MODE_CLIENT:
             if not self.url:
-                return False, "共有元のアドレスを入れてください"
+                return False, "共有元のアドレスを入力してください"
             self.client = sync.SyncClient(
                 self.st.library.path, self.url, self.token, self.interval,
                 on_change=lambda a, b: self._events.put(("client", (a, b))))
             self.client.start()
             self._start_pump()
-            return True, "共有元につなぎに行きます"
-        return True, "共有していません"
+            return True, "共有元へ接続します"
+        return True, "共有 無効"
 
     def _open_outside(self):
         """外から届くようにする。"""
@@ -156,17 +156,17 @@ class Share(object):
             if not self.tunnel.start():
                 self.open_error = self.tunnel.error
                 self.tunnel = None
-                return False, "トンネルを開けませんでした"
-            return True, "トンネルを開いています… (URL が出るまで少し待ちます)"
+                return False, "トンネルを確立できません"
+            return True, "トンネル確立中… (URL 発行まで数秒)"
         if self.opening == OPEN_UPNP:
             self.upnp = tunnel.UpnpMapping(self.port, "ARK Library")
             if not self.upnp.start():
                 self.open_error = self.upnp.error
                 self.upnp = None
-                return False, "ルーターに穴を開けられませんでした"
+                return False, "ポート開放に失敗しました"
             self.public_url = self.upnp.url
-            return True, "ルーターに穴を開けました"
-        return True, "家の中だけに配っています"
+            return True, "ポートを開放しました"
+        return True, "LAN 内のみに公開中"
 
     def restart(self):
         return self.start()
@@ -191,15 +191,15 @@ class Share(object):
     def sync_now(self):
         """手で 1 回だけやり取りする。失敗したら文字列を返す。"""
         if self.mode != MODE_CLIENT:
-            return "「共有元につなぎに行く」のときだけ使えます。"
+            return "「共有元へ接続する」を選択している場合のみ使用できます。"
         if not self.url:
-            return "共有元のアドレスを入れてください。"
+            return "共有元のアドレスを入力してください。"
         client = self.client or sync.SyncClient(self.st.library.path, self.url,
                                                 self.token, self.interval)
         try:
             got = client.sync_once()
         except Exception as e:
-            return "やり取りできませんでした。\n\n%s" % e
+            return "同期に失敗しました。\n\n%s" % e
         self.last_sync = time.time()
         return got
 
@@ -267,39 +267,39 @@ class Share(object):
 
     def describe(self):
         if self.mode == MODE_OFF:
-            return "共有していません"
+            return "共有 無効"
         if self.mode == MODE_SERVER:
             if self.server is None or not self.server.running:
-                return "共有元にできていません  %s" % (self.last_error or "")
-            parts = ["共有元として動いています (ポート %d)" % self.port]
+                return "共有元を起動できません  %s" % (self.last_error or "")
+            parts = ["共有元として稼働中 (ポート %d)" % self.port]
             if self.opening == OPEN_CLOUDFLARE:
                 if self.tunnel is not None and self.tunnel.url:
-                    parts.append("トンネル OK")
+                    parts.append("トンネル確立")
                 elif self.open_error:
                     parts.append("トンネル失敗: %s" % self.open_error.splitlines()[0])
                 else:
-                    parts.append("トンネルを開いています…")
+                    parts.append("トンネル確立中…")
             elif self.opening == OPEN_UPNP:
-                parts.append("ルーターに穴あり" if self.upnp is not None
-                             else "ルーター失敗: %s" % (self.open_error or ""))
+                parts.append("ポート開放済" if self.upnp is not None
+                             else "ポート開放失敗: %s" % (self.open_error or ""))
             if self.server.last_at:
-                parts.append("最後のやり取り %s%s"
+                parts.append("最終通信 %s%s"
                              % (_hhmm(self.server.last_at),
                                 " (%s)" % self.server.last_who
                                 if self.server.last_who else ""))
             else:
-                parts.append("まだ誰も来ていません")
+                parts.append("接続履歴なし")
             return "  ".join(parts)
         if self.client is None or not self.client.running:
-            return "つないでいません  %s" % (self.last_error or "")
+            return "未接続  %s" % (self.last_error or "")
         if self.client.error:
-            return "つながりません: %s" % self.client.error
+            return "接続失敗: %s" % self.client.error
         if self.client.last_ok:
-            return ("つながっています  最後のやり取り %s  "
-                    "(受け取り %d / 送り出し %d)"
+            return ("接続中  最終同期 %s  "
+                    "(受信 %d / 送信 %d)"
                     % (_hhmm(self.client.last_ok), self.client.pulled,
                        self.client.pushed))
-        return "つなぎに行っています…"
+        return "接続中…"
 
 
 def _hhmm(t):

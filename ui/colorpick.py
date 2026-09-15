@@ -79,9 +79,9 @@ class ColorDialog(tk.Toplevel):
 
         box = tk.Frame(self, bg=theme.BG)
         box.pack(fill="x", padx=16, pady=(6, 14))
-        theme.RoundButton(box, "色を決めない", lambda: self._pick(0),
+        theme.RoundButton(box, "色を指定しない", lambda: self._pick(0),
                           kind="soft", bg=theme.BG).pack(side="left", padx=(0, 6))
-        theme.RoundButton(box, "やめる", self.destroy, kind="ghost",
+        theme.RoundButton(box, "キャンセル", self.destroy, kind="ghost",
                           bg=theme.BG).pack(side="left")
         self.grab_set()
 

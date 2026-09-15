@@ -47,7 +47,7 @@ class Item(object):
         """画面に出す「いま / 目標」。"""
         if self.kind == KIND_COLOR:
             if self.ok:
-                return "%s 合っている" % self.label
+                return "%s 一致" % self.label
             return "%s %s → %s" % (self.label,
                                    arkcolors.label_of(self.have),
                                    arkcolors.label_of(self.want))
@@ -78,10 +78,10 @@ class Score(object):
 
     def summary(self):
         if not self.items:
-            return "理想個体が決まっていません"
+            return "理想個体 未設定"
         if self.reached:
-            return "理想どおり (100%)"
-        return "理想まで %.0f%%  足りない: %s" % (
+            return "目標達成 (100%)"
+        return "到達率 %.0f%%  未達: %s" % (
             self.percent, "、".join(i.text for i in self.short))
 
     def __repr__(self):

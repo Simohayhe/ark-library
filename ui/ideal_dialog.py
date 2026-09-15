@@ -38,15 +38,15 @@ class IdealDialog(tk.Toplevel):
                  fg=theme.INK, font=theme.F.get("cute_b")).pack(
             anchor="w", padx=20, pady=(16, 2))
         tk.Label(self,
-                 text="狙うステータスと色を決めておくと、一覧に「理想まで何%」が"
-                      "出ます。\nステータスは遠いほど % が下がります。"
-                      "0 を入れるとゼロ狙いです。\n"
-                      "色は合っているかどうかだけ (近い色という考え方はありません)。",
+                 text="目標のステータスと色を設定すると、一覧に到達率が表示されます。\n"
+                      "ステータスは目標から離れるほど % が下がります "
+                      "(0 を指定するとゼロ狙い)。\n"
+                      "色は一致・不一致のみで判定します (近似色の概念なし)。",
                  bg=theme.BG, fg=theme.INK_SUB, font=theme.F.get("small"),
                  justify="left").pack(anchor="w", padx=20)
 
         # ---- ステータス ----
-        tk.Label(self, text="ステータス (野生+変異のレベル)", bg=theme.BG,
+        tk.Label(self, text="ステータス (野生+変異レベル)", bg=theme.BG,
                  fg=theme.INK_SUB, font=theme.F.get("small")).pack(
             anchor="w", padx=20, pady=(12, 2))
         grid = tk.Frame(self, bg=theme.BG)
@@ -71,13 +71,13 @@ class IdealDialog(tk.Toplevel):
 
         fill = tk.Frame(self, bg=theme.BG)
         fill.pack(anchor="w", padx=20, pady=(8, 0))
-        theme.RoundButton(fill, "群れの最高値を入れる", self._from_tops,
+        theme.RoundButton(fill, "最高値を反映", self._from_tops,
                           kind="soft", bg=theme.BG).pack(side="left", padx=(0, 6))
         if selected is not None:
-            theme.RoundButton(fill, "選んだ個体をそのまま", self._from_selected,
+            theme.RoundButton(fill, "選択中の個体から", self._from_selected,
                               kind="soft", bg=theme.BG).pack(side="left",
                                                              padx=(0, 6))
-        theme.RoundButton(fill, "ぜんぶ空に", self._clear_stats, kind="ghost",
+        theme.RoundButton(fill, "すべてクリア", self._clear_stats, kind="ghost",
                           bg=theme.BG).pack(side="left")
 
         # ---- 色 ----
@@ -85,7 +85,7 @@ class IdealDialog(tk.Toplevel):
         regions = arkcolors.used_regions(species_bp) if arkcolors.available() else []
         self.color_buttons = {}
         if regions:
-            tk.Label(self, text="色 (狙わない領域は「色を決めない」のまま)",
+            tk.Label(self, text="色 (対象外の領域は「色を指定しない」のまま)",
                      bg=theme.BG, fg=theme.INK_SUB,
                      font=theme.F.get("small")).pack(anchor="w", padx=20,
                                                      pady=(14, 2))
@@ -112,7 +112,7 @@ class IdealDialog(tk.Toplevel):
         box.pack(padx=20, pady=14)
         theme.RoundButton(box, "決定", self._save, kind="primary",
                           bg=theme.BG).pack(side="left", padx=4)
-        theme.RoundButton(box, "目標をやめる", self._delete, kind="soft",
+        theme.RoundButton(box, "目標を解除", self._delete, kind="soft",
                           bg=theme.BG).pack(side="left", padx=4)
         theme.RoundButton(box, "閉じる", self.destroy, kind="ghost",
                           bg=theme.BG).pack(side="left", padx=4)
@@ -137,18 +137,18 @@ class IdealDialog(tk.Toplevel):
     def _preview(self):
         idl = self._build()
         if idl.empty:
-            self.preview.configure(text="まだ何も狙っていません")
+            self.preview.configure(text="未設定")
             return
-        lines = ["狙い: %s  (素Lv%d)" % (idl.describe(self.species_bp),
+        lines = ["目標: %s  (素Lv%d)" % (idl.describe(self.species_bp),
                                          idl.base_level())]
         refs = arkideal.refs_from(self.creatures)
         ranked = arkideal.rank(self.creatures, idl, refs, self.species_bp)
         if ranked:
             sc, c = ranked[0]
-            lines.append("いちばん近い個体: %s  %.0f%%"
+            lines.append("最も近い個体: %s  %.0f%%"
                          % (c.display_name, sc.percent))
             if sc.short:
-                lines.append("  足りない: " + "、".join(i.text for i in sc.short))
+                lines.append("  未達: " + "、".join(i.text for i in sc.short))
         self.preview.configure(text="\n".join(lines))
 
     def _pick_color(self, region):

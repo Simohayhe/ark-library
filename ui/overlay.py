@@ -121,11 +121,11 @@ class StatOverlay(object):
             pct = ideal_score.percent
             fg = theme.MINT if ideal_score.reached else (
                 theme.LAV if pct >= 90 else theme.INK_SUB)
-            tk.Label(line, text="理想まで %.0f%%" % pct, bg=theme.CARD, fg=fg,
+            tk.Label(line, text="到達率 %.0f%%" % pct, bg=theme.CARD, fg=fg,
                      font=theme.F.get("cute_b")).pack(side="left")
             if ideal_score.short:
                 tk.Label(line,
-                         text="足りない: " + "、".join(
+                         text="未達: " + "、".join(
                              i.text for i in ideal_score.short[:4]),
                          bg=theme.CARD, fg=theme.INK_SUB,
                          font=theme.F.get("small")).pack(side="left", padx=10)
@@ -137,7 +137,7 @@ class StatOverlay(object):
             tk.Label(foot, text=name_text, bg=theme.FIELD, fg=theme.INK,
                      font=theme.F.get("ui_b"), padx=10, pady=4).pack(side="left")
             if copied:
-                tk.Label(foot, text="コピー済み  Ctrl+V で貼れます", bg=theme.CARD,
+                tk.Label(foot, text="コピー済み  Ctrl+V で貼り付け", bg=theme.CARD,
                          fg=theme.INK_SUB,
                          font=theme.F.get("small")).pack(side="left", padx=10)
         else:

@@ -308,7 +308,7 @@ def share_page():
     _check(len(page.token_table.rows) >= 2, "合言葉の一覧が出ていない")
     page.token_table.select_by(lambda r: r["_obj"] is member)
     page._copy_invite()
-    _check("合言葉" in page.clipboard_get(), "つなぎ方がコピーされない")
+    _check("アクセスキー" in page.clipboard_get(), "招待文がコピーされない")
     page.mode.set("client")
     page.url.set("http://127.0.0.1:8793")
     page._on_mode()
@@ -326,7 +326,7 @@ def share_page():
     app.update()
 
 
-step("PC間で共有の画面", share_page)
+step("共有の画面", share_page)
 
 st = app._pages["settings"]
 step("設定: プリセット", lambda: (st._official(), st._vanilla(), app.update()))

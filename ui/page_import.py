@@ -33,11 +33,11 @@ class ImportPage(tk.Frame):
     # ---- 組み立て ------------------------------------------------------
 
     def _build(self):
-        tk.Label(self, text="取り込み", bg=theme.BG, fg=theme.INK,
+        tk.Label(self, text="インポート", bg=theme.BG, fg=theme.INK,
                  font=theme.F.get("head")).pack(anchor="w", padx=16, pady=(14, 2))
         tk.Label(self,
-                 text="ゲーム内で生物のインベントリを開いて「恐竜のエクスポート」を押すと、"
-                      "下のフォルダにファイルが増えます。",
+                 text="ゲーム内で生物のインベントリから「恐竜のエクスポート」を実行すると、"
+                      "下記フォルダにファイルが生成されます。",
                  bg=theme.BG, fg=theme.INK_SUB, font=theme.F.get("small"),
                  justify="left").pack(anchor="w", padx=16)
 
@@ -63,19 +63,19 @@ class ImportPage(tk.Frame):
         self.server_box = ttk.Combobox(row2, textvariable=self.server, width=22,
                                        style="Cute.TCombobox")
         self.server_box.pack(side="left")
-        tk.Label(row2, text="倍率はこのサーバーの設定で逆算します",
+        tk.Label(row2, text="この倍率設定で逆算します",
                  bg=theme.CARD, fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(side="left", padx=8)
 
         row3 = tk.Frame(b, bg=theme.CARD)
         row3.pack(fill="x", pady=(4, 2))
-        theme.RoundButton(row3, "新しいぶんを取り込む", self._import_new,
+        theme.RoundButton(row3, "新規分をインポート", self._import_new,
                           kind="primary", bg=theme.CARD).pack(side="left", padx=(0, 4))
-        theme.RoundButton(row3, "全部読み直す", self._import_all, kind="soft",
+        theme.RoundButton(row3, "全件を再読み込み", self._import_all, kind="soft",
                           bg=theme.CARD).pack(side="left", padx=4)
-        theme.RoundButton(row3, "ファイルを選ぶ", self._import_files, kind="soft",
+        theme.RoundButton(row3, "ファイルを選択", self._import_files, kind="soft",
                           bg=theme.CARD).pack(side="left", padx=4)
-        tk.Checkbutton(row3, text="自動で取り込む (エクスポートした瞬間)",
+        tk.Checkbutton(row3, text="自動インポート (エクスポートを検知)",
                        variable=self.watching,
                        command=self._toggle_watch, bg=theme.CARD, fg=theme.INK,
                        selectcolor=theme.FIELD, activebackground=theme.CARD,
@@ -94,9 +94,9 @@ class ImportPage(tk.Frame):
         lb = log_card.body
         head = tk.Frame(lb, bg=theme.CARD)
         head.pack(fill="x")
-        tk.Label(head, text="取り込みログ", bg=theme.CARD, fg=theme.INK_SUB,
+        tk.Label(head, text="ログ", bg=theme.CARD, fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(side="left")
-        theme.RoundButton(head, "消す", self._clear_log, kind="ghost",
+        theme.RoundButton(head, "クリア", self._clear_log, kind="ghost",
                           bg=theme.CARD).pack(side="right")
 
         wrap = tk.Frame(lb, bg=theme.CARD)
@@ -166,9 +166,9 @@ class ImportPage(tk.Frame):
 
     def _import_all(self):
         if not messagebox.askyesno(
-                "全部読み直す",
-                "フォルダ内の全ファイルをもう一度読み込みます。\n"
-                "同じ個体は更新されるだけなので重複はしません。", parent=self):
+                "全件を再読み込み",
+                "フォルダ内の全ファイルを再読み込みします。\n"
+                "既存の個体は更新されるため重複しません。", parent=self):
             return
         self._run(skip_known=False)
 
@@ -209,9 +209,9 @@ class ImportPage(tk.Frame):
         started = time.time()
         for i, p in enumerate(todo, 1):
             if self._cancel:
-                self._say("途中でやめました (%d/%d 件)" % (i - 1, len(todo)), "note")
+                self._say("中断しました (%d/%d 件)" % (i - 1, len(todo)), "note")
                 break
-            self._progress("%d/%d  %s を読んでいます…"
+            self._progress("%d/%d  %s を処理中…"
                            % (i, len(todo), os.path.basename(p)))
             # 手で取り込むときは、時間をかけてでも解きにいく。
             # 逆算が速くなったので、4 秒でも前の 8 秒より広く探せる
@@ -227,10 +227,10 @@ class ImportPage(tk.Frame):
 
         total = added + updated + failed
         if total > 1:
-            self._say("%d 件を %.1f 秒で読みました" % (total, time.time() - started),
+            self._say("%d 件を %.1f 秒で処理" % (total, time.time() - started),
                       "note")
         if total == 0 and not quiet_empty:
-            self._say("新しいファイルはありませんでした。", "note")
+            self._say("新規ファイルはありません。", "note")
         elif total == 0:
             self._say("新しいファイルはありませんでした (%d 件は前回と同じ)。"
                       % skipped, "note")

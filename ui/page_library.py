@@ -80,12 +80,12 @@ class LibraryPage(tk.Frame):
                           bg=theme.BG).pack(side="right", padx=3)
         theme.RoundButton(right, "詳細", self._open_detail, kind="soft",
                           bg=theme.BG).pack(side="right", padx=3)
-        theme.RoundButton(right, "変異を割り出す", self._reassign_mutations,
+        theme.RoundButton(right, "変異を推定", self._reassign_mutations,
                           kind="soft", bg=theme.BG).pack(side="right", padx=3)
         self.plan_btn = theme.RoundButton(right, "交配計画", self._toggle_plan,
                                           kind="primary", bg=theme.BG)
         self.plan_btn.pack(side="right", padx=3)
-        theme.RoundButton(right, "名前の付け方", self._naming_dialog, kind="soft",
+        theme.RoundButton(right, "命名規則", self._naming_dialog, kind="soft",
                           bg=theme.BG).pack(side="right", padx=3)
         theme.RoundButton(right, "理想個体", self._ideal_dialog, kind="soft",
                           bg=theme.BG).pack(side="right", padx=3)
@@ -99,7 +99,7 @@ class LibraryPage(tk.Frame):
         e.pack(side="left", padx=(6, 12))
         e.bind("<KeyRelease>", lambda _e: self._fill_table())
 
-        tk.Checkbutton(bar, text="レベルではなく実数値で見る",
+        tk.Checkbutton(bar, text="実数値で表示",
                        variable=self.show_values, command=self._fill_table,
                        bg=theme.BG, fg=theme.INK, selectcolor=theme.FIELD,
                        activebackground=theme.BG, activeforeground=theme.INK,
@@ -168,8 +168,8 @@ class LibraryPage(tk.Frame):
         if not summary:
             self.species_bp = None
             self.species = None
-            self.sub.configure(text="まだ 1 体も入っていません。"
-                                    "「取り込み」からエクスポートを読み込んでください")
+            self.sub.configure(text="個体が登録されていません。"
+                                    "「インポート」から読み込んでください")
             self._build_table([])
             self._fill_table()
             return
@@ -399,7 +399,7 @@ class LibraryPage(tk.Frame):
             self.plan_page.set_focus(c)
         parts = []
         if c.ambiguous:
-            parts.append("⚠ 表示値だけではレベルの内訳が一つに決まらなかった個体")
+            parts.append("⚠ 表示値だけではレベル内訳が一意に定まらなかった個体")
         vals = []
         for s in getattr(self, "stat_list", []):
             if c.values[s]:
@@ -441,13 +441,13 @@ class LibraryPage(tk.Frame):
                     activebackground=theme.PINK,
                     activeforeground=theme.ON_ACCENT,
                     font=theme.F.get("ui"), bd=0)
-        m.add_command(label="詳細を見る", command=self._open_detail)
+        m.add_command(label="詳細", command=self._open_detail)
         m.add_separator()
         m.add_command(label="ステータスを編集…", command=self._edit_stats)
         m.add_command(label="色を編集…", command=self._edit_colors)
-        m.add_command(label="状態を変える…", command=self._change_status)
+        m.add_command(label="状態を変更…", command=self._change_status)
         m.add_separator()
-        m.add_command(label="この個体を理想個体にする", command=self._set_as_ideal)
+        m.add_command(label="理想個体に設定", command=self._set_as_ideal)
         m.add_command(label="名前をコピー", command=self._copy_name)
         m.add_separator()
         m.add_command(label="削除", command=self._delete)
@@ -478,7 +478,7 @@ class LibraryPage(tk.Frame):
         self._after_change()
         messagebox.showinfo(
             "理想個体",
-            "%s を理想個体にしました。\n\n%s"
+            "%s を理想個体に設定しました。\n\n%s"
             % (c.display_name, idl.describe(self.species_bp)), parent=self)
 
     def _copy_name(self):
@@ -501,7 +501,7 @@ class LibraryPage(tk.Frame):
             return None
         c = self.table.selected_obj()
         if c is None:
-            messagebox.showinfo("ARK ライブラリ", "個体を選んでください。", parent=self)
+            messagebox.showinfo("ARK ライブラリ", "個体を選択してください。", parent=self)
         return c
 
     def _open_detail(self):
@@ -522,7 +522,7 @@ class LibraryPage(tk.Frame):
         if not messagebox.askyesno(
                 "削除の確認",
                 "%s をライブラリから削除します。よろしいですか？\n"
-                "(ゲーム内の生物には何も起きません)" % c.display_name, parent=self):
+                "(ゲーム内の生物には影響しません)" % c.display_name, parent=self):
             return
         self.st.library.delete(c.uid)
         self.reload()
@@ -537,15 +537,15 @@ class LibraryPage(tk.Frame):
     def _reassign_mutations(self):
         """あとから親が揃った個体の変異を振り分け直す。"""
         fixed, looked, notes = breeding.reassign_mutations(self.st.library)
-        lines = ["親が見つかった個体: %d 体" % looked,
-                 "変異を割り出せた個体: %d 体" % fixed]
+        lines = ["両親が見つかった個体: %d 体" % looked,
+                 "変異を特定できた個体: %d 体" % fixed]
         for c, note in notes[:12]:
             lines.append("  %s … %s" % (c.display_name, note))
         if looked == 0:
             lines.append("")
-            lines.append("両親の両方（または片方）がライブラリに入っていないと"
-                         "判定できません。親もエクスポートして取り込んでください。")
-        messagebox.showinfo("変異の割り出し", "\n".join(lines), parent=self)
+            lines.append("両親の両方 (または片方) がライブラリに無いと判定できません。"
+                         "両親もエクスポートしてインポートしてください。")
+        messagebox.showinfo("変異の推定", "\n".join(lines), parent=self)
         self._after_change()
 
     # ---- 交配計画 ------------------------------------------------------
@@ -577,7 +577,7 @@ class LibraryPage(tk.Frame):
     def _ideal_dialog(self):
         """狙っている個体の姿を決める。"""
         if self.species is None:
-            messagebox.showinfo("ARK ライブラリ", "先に種族を選んでください。",
+            messagebox.showinfo("ARK ライブラリ", "先に種族を選択してください。",
                                 parent=self)
             return
         from .ideal_dialog import IdealDialog
@@ -590,7 +590,7 @@ class LibraryPage(tk.Frame):
     def _naming_dialog(self):
         """この種族だけ、名前に入れるステータスを変える。"""
         if self.species is None:
-            messagebox.showinfo("ARK ライブラリ", "先に種族を選んでください。",
+            messagebox.showinfo("ARK ライブラリ", "先に種族を選択してください。",
                                 parent=self)
             return
         from .naming_dialog import SpeciesNamingDialog
@@ -626,7 +626,7 @@ class _StatusDialog(tk.Toplevel):
         box.pack(padx=20, pady=14)
         theme.RoundButton(box, "決定", self._ok, kind="primary",
                           bg=theme.BG).pack(side="left", padx=4)
-        theme.RoundButton(box, "やめる", self.destroy, kind="ghost",
+        theme.RoundButton(box, "キャンセル", self.destroy, kind="ghost",
                           bg=theme.BG).pack(side="left", padx=4)
         self.grab_set()
 

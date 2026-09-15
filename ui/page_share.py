@@ -41,12 +41,12 @@ class SharePage(tk.Frame):
     # ---- 組み立て ------------------------------------------------------
 
     def _build(self):
-        tk.Label(self, text="PC間で共有", bg=theme.BG, fg=theme.INK,
+        tk.Label(self, text="共有", bg=theme.BG, fg=theme.INK,
                  font=theme.F.get("head")).pack(anchor="w", padx=16, pady=(14, 2))
         tk.Label(self,
-                 text="1 台を「共有元」にして、ほかの PC はそこへつなぎに行きます。"
-                      "取り込んだ個体・メモ・理想個体・サーバー倍率が揃います。\n"
-                      "取り込みフォルダや画面の色はその PC のままです。",
+                 text="1 台を共有元にして、他の PC はそこへ接続します。"
+                      "個体・メモ・理想個体・サーバー倍率が同期されます。\n"
+                      "取り込みフォルダとテーマは各 PC 固有の設定です。",
                  bg=theme.BG, fg=theme.INK_SUB, font=theme.F.get("small"),
                  justify="left").pack(anchor="w", padx=16)
 
@@ -55,11 +55,11 @@ class SharePage(tk.Frame):
         card.pack(fill="x", padx=16, pady=(8, 4))
         b = card.body
         for key, label_text, note in (
-                (MODE_OFF, "共有しない", "この PC だけで使う"),
+                (MODE_OFF, "共有しない", "この PC 単体で使用"),
                 (MODE_SERVER, "この PC を共有元にする",
-                 "ずっと起動しておく側。サーバー用 PC におすすめ"),
-                (MODE_CLIENT, "共有元につなぎに行く",
-                 "ゲーム用 PC・友達はこちら")):
+                 "常時起動する側。サーバー用 PC 推奨"),
+                (MODE_CLIENT, "共有元へ接続する",
+                 "ゲーム用 PC・招待された側はこちら")):
             row = tk.Frame(b, bg=theme.CARD)
             row.pack(fill="x", pady=1)
             tk.Radiobutton(row, text=label_text, variable=self.mode, value=key,
@@ -77,7 +77,7 @@ class SharePage(tk.Frame):
         # ---- 状態 ----
         foot = tk.Frame(self, bg=theme.BG)
         foot.pack(fill="x", padx=16, pady=(8, 4))
-        theme.RoundButton(foot, "保存して反映", self._save, kind="primary",
+        theme.RoundButton(foot, "保存して適用", self._save, kind="primary",
                           bg=theme.BG).pack(side="left")
         self.state_label = tk.Label(foot, text="", bg=theme.BG, fg=theme.INK_SUB,
                                     font=theme.F.get("small"), anchor="w",
@@ -90,7 +90,7 @@ class SharePage(tk.Frame):
 
         row = tk.Frame(sb, bg=theme.CARD)
         row.pack(fill="x")
-        tk.Label(row, text="どこまで届かせるか", bg=theme.CARD, fg=theme.INK,
+        tk.Label(row, text="公開範囲", bg=theme.CARD, fg=theme.INK,
                  font=theme.F.get("cute_b")).pack(side="left")
         tk.Label(row, text="ポート", bg=theme.CARD, fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(side="left", padx=(16, 4))
@@ -98,11 +98,11 @@ class SharePage(tk.Frame):
                          bg=theme.CARD).pack(side="left")
 
         for key, note in (
-                (OPEN_LAN, "同じ家の中の PC だけ。いちばん安全"),
+                (OPEN_LAN, "同一 LAN 内の PC のみ。最も安全"),
                 (OPEN_CLOUDFLARE,
-                 "友達にも。ルーターは一切いじらない。cloudflared が要ります"),
+                 "外部公開。ルーター設定は不要。cloudflared が必要"),
                 (OPEN_UPNP,
-                 "友達にも。ルーターに自動で穴を開ける。ルーター再起動で消えます")):
+                 "外部公開。ルーターへ自動でポート転送を要求。再起動で解除")):
             r = tk.Frame(sb, bg=theme.CARD)
             r.pack(fill="x", pady=1)
             tk.Radiobutton(r, text=OPEN_JA[key], variable=self.opening,
@@ -120,10 +120,10 @@ class SharePage(tk.Frame):
                                  fg=theme.RED, font=theme.F.get("small"),
                                  justify="left", anchor="w")
         self.cf_label.pack(side="left")
-        theme.RoundButton(self.cf_note, "入れる (winget)", self._install_cf,
+        theme.RoundButton(self.cf_note, "winget で導入", self._install_cf,
                           kind="soft", bg=theme.CARD).pack(side="left", padx=8)
 
-        self.addr_head = tk.Label(sb, text="教えるアドレス", bg=theme.CARD,
+        self.addr_head = tk.Label(sb, text="接続先アドレス", bg=theme.CARD,
                                   fg=theme.INK_SUB, font=theme.F.get("small"))
         self.addr_head.pack(anchor="w", pady=(8, 2))
         self.addr = tk.Label(sb, text="", bg=theme.FIELD, fg=theme.INK,
@@ -136,39 +136,39 @@ class SharePage(tk.Frame):
         # ---- 合言葉 ----
         head = tk.Frame(sb, bg=theme.CARD)
         head.pack(fill="x", pady=(12, 2))
-        tk.Label(head, text="合言葉", bg=theme.CARD, fg=theme.INK,
+        tk.Label(head, text="アクセスキー", bg=theme.CARD, fg=theme.INK,
                  font=theme.F.get("cute_b")).pack(side="left")
-        tk.Label(head, text="管理者は書き込みもできる / メンバーは見るだけ。"
-                            "人ごとに配ると、やめた人のぶんだけ消せます",
+        tk.Label(head, text="管理者は読み書き可 / メンバーは閲覧のみ。"
+                            "個別に発行すれば、個別に失効できます",
                  bg=theme.CARD, fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(side="left", padx=10)
-        theme.RoundButton(head, "メンバーを発行",
+        theme.RoundButton(head, "メンバーキー発行",
                           lambda: self._issue(sync.ROLE_MEMBER), kind="soft",
                           bg=theme.CARD).pack(side="right", padx=3)
-        theme.RoundButton(head, "管理者を発行",
+        theme.RoundButton(head, "管理者キー発行",
                           lambda: self._issue(sync.ROLE_ADMIN), kind="soft",
                           bg=theme.CARD).pack(side="right", padx=3)
 
         cols = [Col("name", "名前", 150),
                 Col("role", "種類", 80, align="center"),
-                Col("token", "合言葉", 190),
+                Col("token", "アクセスキー", 190),
                 Col("made", "発行日", 110)]
         self.token_table = Table(sb, cols, bg=theme.CARD, min_rows=4,
                                  on_row_menu=self._token_menu)
         self.token_table.pack(fill="x", pady=(2, 0))
         bar = tk.Frame(sb, bg=theme.CARD)
         bar.pack(fill="x", pady=(4, 0))
-        theme.RoundButton(bar, "合言葉をコピー", self._copy_token, kind="soft",
+        theme.RoundButton(bar, "キーをコピー", self._copy_token, kind="soft",
                           bg=theme.CARD).pack(side="left", padx=(0, 4))
-        theme.RoundButton(bar, "つなぎ方をまとめてコピー", self._copy_invite,
+        theme.RoundButton(bar, "招待文をコピー", self._copy_invite,
                           kind="primary", bg=theme.CARD).pack(side="left", padx=4)
-        theme.RoundButton(bar, "消す", self._revoke, kind="danger",
+        theme.RoundButton(bar, "失効", self._revoke, kind="danger",
                           bg=theme.CARD).pack(side="left", padx=4)
 
     def _build_client_card(self):
         self.client_card = theme.Card(self, bg=theme.BG)
         cb = self.client_card.body
-        tk.Label(cb, text="共有元につなぐ", bg=theme.CARD, fg=theme.INK,
+        tk.Label(cb, text="共有元へ接続", bg=theme.CARD, fg=theme.INK,
                  font=theme.F.get("cute_b")).pack(anchor="w")
         row = tk.Frame(cb, bg=theme.CARD)
         row.pack(fill="x", pady=(6, 2))
@@ -176,7 +176,7 @@ class SharePage(tk.Frame):
                  font=theme.F.get("small"), width=8, anchor="w").pack(side="left")
         theme.soft_entry(row, textvariable=self.url, width=34,
                          bg=theme.CARD).pack(side="left")
-        tk.Label(row, text="合言葉", bg=theme.CARD, fg=theme.INK_SUB,
+        tk.Label(row, text="アクセスキー", bg=theme.CARD, fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(side="left", padx=(16, 6))
         theme.soft_entry(row, textvariable=self.token, width=20,
                          bg=theme.CARD).pack(side="left")
@@ -186,15 +186,15 @@ class SharePage(tk.Frame):
                  font=theme.F.get("small"), width=8, anchor="w").pack(side="left")
         theme.soft_entry(row2, textvariable=self.interval, width=6,
                          bg=theme.CARD).pack(side="left")
-        tk.Label(row2, text="秒おきにやり取りします", bg=theme.CARD,
+        tk.Label(row2, text="秒間隔で同期", bg=theme.CARD,
                  fg=theme.INK_SUB,
                  font=theme.F.get("small")).pack(side="left", padx=6)
-        theme.RoundButton(row2, "貼り付けて読み取る", self._paste_invite,
+        theme.RoundButton(row2, "招待文から取り込む", self._paste_invite,
                           kind="soft", bg=theme.CARD).pack(side="left",
                                                            padx=(16, 4))
-        theme.RoundButton(row2, "つながるか試す", self._test, kind="soft",
+        theme.RoundButton(row2, "接続テスト", self._test, kind="soft",
                           bg=theme.CARD).pack(side="left", padx=4)
-        theme.RoundButton(row2, "いますぐ同期", self._sync_now, kind="soft",
+        theme.RoundButton(row2, "今すぐ同期", self._sync_now, kind="soft",
                           bg=theme.CARD).pack(side="left", padx=4)
 
     # ---- データ --------------------------------------------------------
@@ -248,7 +248,7 @@ class SharePage(tk.Frame):
             exe = tunnel.find_cloudflared()
             if exe is None:
                 self.cf_label.configure(
-                    text="cloudflared が入っていません:  %s"
+                    text="cloudflared 未導入:  %s"
                          % tunnel.CLOUDFLARED_INSTALL)
                 # ラジオのすぐ下に出す (あとから pack すると一番下に行く)
                 self.cf_note.pack(fill="x", pady=(4, 0),
@@ -259,8 +259,8 @@ class SharePage(tk.Frame):
         self.state_label.configure(text=self.share.describe())
         addrs = self.share.addresses()
         if self.mode.get() == MODE_SERVER and self.share.server is None:
-            addrs = ["(まだ配っていません。保存して反映を押してください)"]
-        self.addr.configure(text="\n".join(addrs) or "(アドレスが分かりません)")
+            addrs = ["(未公開。「保存して適用」を押してください)"]
+        self.addr.configure(text="\n".join(addrs) or "(アドレス不明)")
 
     # ---- ボタン --------------------------------------------------------
 
@@ -296,14 +296,14 @@ class SharePage(tk.Frame):
             self.share.restart()          # 新しい合言葉をすぐ効かせる
             self._refresh_state()
         messagebox.showinfo(
-            "共有", "%s の合言葉を作りました。\n\n%s\n\n"
-                    "「つなぎ方をまとめてコピー」で相手に渡せます。"
+            "共有", "%s のアクセスキーを発行しました。\n\n%s\n\n"
+                    "「招待文をコピー」で相手に渡せます。"
             % (ROLE_LABEL.get(role, role), entry["token"]), parent=self)
 
     def _selected_token(self):
         row = self.token_table.selected_row()
         if row is None:
-            messagebox.showinfo("共有", "合言葉を選んでください。", parent=self)
+            messagebox.showinfo("共有", "アクセスキーを選択してください。", parent=self)
             return None
         return row.get("_obj")
 
@@ -312,10 +312,10 @@ class SharePage(tk.Frame):
                     activebackground=theme.PINK,
                     activeforeground=theme.ON_ACCENT,
                     font=theme.F.get("ui"), bd=0)
-        m.add_command(label="合言葉をコピー", command=self._copy_token)
-        m.add_command(label="つなぎ方をまとめてコピー", command=self._copy_invite)
+        m.add_command(label="キーをコピー", command=self._copy_token)
+        m.add_command(label="招待文をコピー", command=self._copy_invite)
         m.add_separator()
-        m.add_command(label="消す", command=self._revoke)
+        m.add_command(label="失効", command=self._revoke)
         try:
             m.tk_popup(event.x_root, event.y_root)
         finally:
@@ -335,7 +335,7 @@ class SharePage(tk.Frame):
     def _copy_token(self):
         t = self._selected_token()
         if t:
-            self._copy(t.get("token", ""), "合言葉をコピーしました")
+            self._copy(t.get("token", ""), "アクセスキーをコピーしました")
 
     def _copy_invite(self):
         """相手にそのまま渡せる案内文。"""
@@ -346,23 +346,23 @@ class SharePage(tk.Frame):
         outside = [a for a in addrs if "trycloudflare" in a
                    or not a.startswith("http://192.168.")]
         addr = (outside or addrs or ["(アドレス不明)"])[0]
-        text = ("ARK ライブラリの共有につないでね\n"
-                "1. アプリの「PC間で共有」→「共有元につなぎに行く」\n"
+        text = ("ARK ライブラリ 共有への招待\n"
+                "1. アプリの「共有」→「共有元へ接続する」を選択\n"
                 "2. アドレス: %s\n"
-                "3. 合言葉: %s\n"
-                "   (%s)\n"
-                "4. 保存して反映を押す" % (addr, t.get("token", ""),
-                                          ROLE_LABEL.get(t.get("role"), "")))
-        self._copy(text, "つなぎ方をコピーしました。そのまま送れます")
+                "3. アクセスキー: %s\n"
+                "   (権限: %s)\n"
+                "4.「保存して適用」を押す" % (addr, t.get("token", ""),
+                                            ROLE_LABEL.get(t.get("role"), "")))
+        self._copy(text, "招待文をコピーしました。そのまま送信できます")
 
     def _revoke(self):
         t = self._selected_token()
         if not t:
             return
         if not messagebox.askyesno(
-                "合言葉を消す",
-                "%s (%s) の合言葉を消します。\n"
-                "この合言葉を使っている人はつながらなくなります。"
+                "アクセスキーの失効",
+                "%s (%s) のアクセスキーを失効します。\n"
+                "このキーを使用中の相手は接続できなくなります。"
                 % (t.get("name") or "", ROLE_LABEL.get(t.get("role"), "")),
                 parent=self):
             return
@@ -375,8 +375,8 @@ class SharePage(tk.Frame):
     def _install_cf(self):
         if not messagebox.askyesno(
                 "cloudflared を入れる",
-                "winget で Cloudflare 製の cloudflared を入れます。\n\n"
-                "  %s\n\n実行してよいですか？" % tunnel.CLOUDFLARED_INSTALL,
+                "winget で Cloudflare 製 cloudflared を導入します。\n\n"
+                "  %s\n\n実行しますか？" % tunnel.CLOUDFLARED_INSTALL,
                 parent=self):
             return
         try:
@@ -389,7 +389,7 @@ class SharePage(tk.Frame):
                                    parent=self)
             return
         messagebox.showinfo("共有",
-                            "入れ終わったら「保存して反映」を押してください。",
+                            "導入完了後に「保存して適用」を押してください。",
                             parent=self)
 
     def _paste_invite(self):
@@ -407,27 +407,27 @@ class SharePage(tk.Frame):
             self.token.set(m.group(1))
         if not (self.url.get() and self.token.get()):
             messagebox.showinfo("共有",
-                                "クリップボードから読み取れませんでした。\n"
-                                "アドレスと合言葉を手で入れてください。", parent=self)
+                                "クリップボードから取得できませんでした。\n"
+                                "アドレスとキーを直接入力してください。", parent=self)
             return
-        self.state_label.configure(text="読み取りました。保存して反映を押してください")
+        self.state_label.configure(text="取り込みました。「保存して適用」を押してください")
 
     def _test(self):
         d = self._collect()
         if not d["url"]:
-            messagebox.showinfo("共有", "共有元のアドレスを入れてください。",
+            messagebox.showinfo("共有", "共有元のアドレスを入力してください。",
                                 parent=self)
             return
         try:
             got = sync.ping(d["url"], d["token"])
         except Exception as e:
-            messagebox.showwarning("共有", "つながりませんでした。\n\n%s" % e,
+            messagebox.showwarning("共有", "接続できませんでした。\n\n%s" % e,
                                    parent=self)
             return
         role = got.get("role")
         messagebox.showinfo(
-            "共有", "つながりました。\n\nあなたの立場: %s"
-            % (sync.ROLE_JA.get(role, "合言葉が要ります (まだ通っていません)")),
+            "共有", "接続に成功しました。\n\n権限: %s"
+            % (sync.ROLE_JA.get(role, "未認証 (アクセスキーが必要)")),
             parent=self)
 
     def _sync_now(self):
@@ -437,7 +437,7 @@ class SharePage(tk.Frame):
             messagebox.showwarning("共有", n, parent=self)
         else:
             pulled, pushed = n
-            messagebox.showinfo("共有", "受け取り %d 件 / 送り出し %d 件"
+            messagebox.showinfo("共有", "受信 %d 件 / 送信 %d 件"
                                 % (pulled, pushed), parent=self)
             self.app.reload_pages()
         self._refresh_state()

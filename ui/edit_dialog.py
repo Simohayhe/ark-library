@@ -137,7 +137,7 @@ class StatEditDialog(tk.Toplevel):
         box.pack(padx=20, pady=14)
         theme.RoundButton(box, "保存", self._save, kind="primary",
                           bg=theme.BG).pack(side="left", padx=4)
-        theme.RoundButton(box, "やめる", self.destroy, kind="ghost",
+        theme.RoundButton(box, "キャンセル", self.destroy, kind="ghost",
                           bg=theme.BG).pack(side="left", padx=4)
 
         self._preview()
@@ -264,7 +264,7 @@ class ColorEditDialog(tk.Toplevel):
         btns.pack(padx=20, pady=16)
         theme.RoundButton(btns, "保存", self._save, kind="primary",
                           bg=theme.BG).pack(side="left", padx=4)
-        theme.RoundButton(btns, "やめる", self.destroy, kind="ghost",
+        theme.RoundButton(btns, "キャンセル", self.destroy, kind="ghost",
                           bg=theme.BG).pack(side="left", padx=4)
         self.grab_set()
 
