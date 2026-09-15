@@ -118,8 +118,14 @@ class LibraryPage(tk.Frame):
         body = tk.Frame(self, bg=theme.BG)
         body.pack(fill="both", expand=True, padx=16, pady=(0, 6))
 
-        # 左: 種族リスト
-        left = tk.Frame(body, bg=theme.CARD, width=196)
+        # 左: 種族リスト。幅は覚えたものを使う
+        try:
+            lw = int(self.app.state_obj.library.get_setting(
+                "species_panel_width", 196))
+        except (TypeError, ValueError):
+            lw = 196
+        lw = max(120, min(520, lw))
+        self.left_panel = left = tk.Frame(body, bg=theme.CARD, width=lw)
         left.pack(side="left", fill="y")
         left.pack_propagate(False)
         tk.Label(left, text="種族", bg=theme.CARD, fg=theme.INK_SUB,
@@ -130,6 +136,19 @@ class LibraryPage(tk.Frame):
             activestyle="none", font=theme.F.get("ui"))
         self.species_list.pack(fill="both", expand=True, padx=8, pady=(0, 10))
         self.species_list.bind("<<ListboxSelect>>", self._on_species_select)
+        # Tkの一覧は、選んだ行の「終わり」を見せようと横へ動く。名前が長いと
+        # 頭が外に出て読めなくなるので、いつも左端へ戻す
+        self.species_list.bind("<<ListboxSelect>>",
+                               lambda e: self.species_list.xview_moveto(0),
+                               add="+")
+
+        # 種族名が長いので、幅を掴んで変えられるようにする
+        grip = tk.Frame(body, bg=theme.BG, width=6, cursor="sb_h_double_arrow")
+        grip.pack(side="left", fill="y")
+        grip.bind("<Button-1>", self._grip_press)
+        grip.bind("<B1-Motion>", self._grip_move)
+        grip.bind("<ButtonRelease-1>", self._grip_release)
+        self._grip = None
 
         # 右: 一覧と詳細
         right_box = tk.Frame(body, bg=theme.BG)
@@ -180,6 +199,26 @@ class LibraryPage(tk.Frame):
         self.species_list.selection_clear(0, "end")
         self.species_list.selection_set(index)
         self._select_species(self._species_bps[index])
+
+    # ---- 種族一覧の幅 --------------------------------------------------
+
+    def _grip_press(self, e):
+        self._grip = (e.x_root, self.left_panel.winfo_width())
+
+    def _grip_move(self, e):
+        if self._grip is None:
+            return
+        x0, w0 = self._grip
+        want = max(120, min(520, w0 + (e.x_root - x0)))
+        self.left_panel.configure(width=want)
+
+    def _grip_release(self, _e=None):
+        """掴んで変えた幅を覚えておく。次に開いても同じ幅で出る。"""
+        if self._grip is None:
+            return
+        self._grip = None
+        self.app.state_obj.library.set_setting(
+            "species_panel_width", int(self.left_panel.winfo_width()))
 
     def _on_species_select(self, _e=None):
         sel = self.species_list.curselection()
