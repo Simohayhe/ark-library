@@ -92,6 +92,25 @@ def _plain(s):
     return "".join((s or "").split()).lower()
 
 
+def species_bases(species_name):
+    """種族名として通る書き方。
+
+    一覧の種族名には但し書きが付くことがある。
+        Veilwyn (Companion, LostColony)
+    ゲーム内で名前を付けずに書き出すと「Veilwyn」だけなので、
+    かっこの前も種族名として見る。
+    """
+    got = []
+    for s in (species_name or "",):
+        if not s:
+            continue
+        got.append(_plain(s))
+        head = re.split(r"[(（]", s, 1)[0].strip()
+        if head:
+            got.append(_plain(head))
+    return [g for g in got if g]
+
+
 def looks_species(name, species_name):
     """ゲーム内の名前が、種族名のままか。
 
@@ -101,12 +120,12 @@ def looks_species(name, species_name):
     if not name or not species_name:
         return False
     a = _plain(name)
-    b = _plain(species_name)
-    if a == b:
+    bases = species_bases(species_name)
+    if a in bases:
         return True
     # 「Deinonychus - Lvl 224」「Deinonychus Lv224」など、後ろにレベルが付く形
     m = re.match(r"^(.*?)[\s\-]*(?:lvl?|レベル)\s*\d+$", a)
-    return bool(m and m.group(1) == b)
+    return bool(m and m.group(1) in bases)
 
 
 def should_rename(name, species_name):

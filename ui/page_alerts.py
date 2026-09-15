@@ -119,6 +119,13 @@ class AlertsPage(tk.Frame):
             values=[l for _k, l in naming.APPLIES])
         self.cb_apply.pack(anchor="w", pady=(2, 0))
         self.cb_apply.bind("<<ComboboxSelected>>", lambda e: self._save_naming())
+        rr = tk.Frame(b2, bg=theme.CARD)
+        rr.pack(anchor="w", pady=(4, 0))
+        theme.RoundButton(rr, "いまのライブラリを付け直す", self._rename_all,
+                          kind="soft", bg=theme.CARD).pack(side="left")
+        self.lbl_rename = tk.Label(rr, text="", bg=theme.CARD,
+                                   fg=theme.INK_SUB, font=theme.F.get("small"))
+        self.lbl_rename.pack(side="left", padx=8)
 
         tk.Label(b2, text="対象ステータス", bg=theme.CARD, fg=theme.INK_SUB,
                  font=theme.F.get("small"), anchor="w").pack(fill="x", pady=(6, 0))
@@ -292,6 +299,17 @@ class AlertsPage(tk.Frame):
         page = self.app._pages.get("import")
         if page is not None:
             page.watching.set(bool(self.auto_on.get()))
+
+    def _rename_all(self):
+        """すでに入っている個体の名前を、いまの決め方で付け直す。"""
+        self._save_naming()
+        done, seen = self.app.auto.rename_library()
+        self.lbl_rename.configure(
+            text="%d体を付け直しました（%d体中）" % (done, seen))
+        try:
+            self.app.reload_pages()      # 一覧に、付け直した名前を出す
+        except Exception:
+            pass
 
     def _save_naming(self):
         if self._loading:

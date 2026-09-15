@@ -96,6 +96,35 @@ class AutoImport(object):
         return (naming.APPLY_EMPTY if self.get("naming_fill_empty")
                 else naming.APPLY_NEVER)
 
+    def rename_library(self, how=None):
+        """すでに入っているぶんの名前を、いまの決め方で付け直す。
+
+        取り込みのときにしか名前を決めていないので、決め方を変えても
+        前に入れたものは古い名前のまま残る。それをまとめて直す。
+        戻り値は (直した数, 見た数)。
+        """
+        how = how or self.naming_apply()
+        lib = self.st.library
+        done = 0
+        rows = list(lib.all_creatures(include_dead=True))
+        for cr in rows:
+            if how == naming.APPLY_NEVER:
+                break
+            if how == naming.APPLY_EMPTY and cr.name:
+                continue
+            if how == naming.APPLY_AUTO and not naming.should_rename(
+                    cr.name, cr.species_name):
+                continue
+            rule = self.naming_rule(cr.species_bp)
+            made = naming.make_name(cr, rule["stats"], rule["with_sex"],
+                                    mutation_mark=rule["mark"],
+                                    mode=rule["mode"])
+            if made and made != cr.name:
+                cr.name = made
+                lib.save(cr)
+                done += 1
+        return done, len(rows)
+
     def naming_stats(self, species_bp=None):
         """名前に入れるステータス。種族ごとの設定があればそちらを使う。"""
         return self.naming_rule(species_bp)["stats"]
