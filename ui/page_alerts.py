@@ -115,7 +115,7 @@ class AlertsPage(tk.Frame):
         self.name_apply = tk.StringVar()
         self._apply_keys = [k for k, _l in naming.APPLIES]
         self.cb_apply = ttk.Combobox(
-            b2, textvariable=self.name_apply, state="readonly", width=42,
+            b2, textvariable=self.name_apply, state="readonly", width=46,
             values=[l for _k, l in naming.APPLIES])
         self.cb_apply.pack(anchor="w", pady=(2, 0))
         self.cb_apply.bind("<<ComboboxSelected>>", lambda e: self._save_naming())

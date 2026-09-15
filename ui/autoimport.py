@@ -90,7 +90,8 @@ class AutoImport(object):
         その設定から引き継ぐ。
         """
         got = self.get("naming_apply")
-        if got in (naming.APPLY_EMPTY, naming.APPLY_ALWAYS, naming.APPLY_NEVER):
+        if got in (naming.APPLY_EMPTY, naming.APPLY_AUTO,
+                   naming.APPLY_ALWAYS, naming.APPLY_NEVER):
             return got
         return (naming.APPLY_EMPTY if self.get("naming_fill_empty")
                 else naming.APPLY_NEVER)
@@ -285,8 +286,10 @@ class AutoImport(object):
                                      mutation_mark=rule["mark"],
                                      mode=rule["mode"])
         how = self.naming_apply()
-        if how == naming.APPLY_ALWAYS or (how == naming.APPLY_EMPTY
-                                          and not cr.name):
+        if (how == naming.APPLY_ALWAYS
+                or (how == naming.APPLY_EMPTY and not cr.name)
+                or (how == naming.APPLY_AUTO
+                    and naming.should_rename(cr.name, cr.species_name))):
             cr.name = name_text
 
         # 名前のコピーがいちばん待たれる仕事なので、保存より先にやる

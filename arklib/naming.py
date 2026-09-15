@@ -10,6 +10,8 @@
 レベルは **野生 + 変異** を使う。交配で子に渡るのがこの値なので、名前を見れば
 そのまま交配の材料として使えるため。自分で振った強化レベルは入れない。
 """
+import re
+
 from . import ark
 from .creature import FEMALE, GENDERLESS, MALE
 
@@ -35,9 +37,11 @@ SEX_LETTER = {MALE: "M", FEMALE: "F", GENDERLESS: "U"}
 
 # ライブラリに登録するときの名前の決め方
 APPLY_EMPTY = "empty"    # ゲーム内で名前が無いときだけ、作った名前を入れる
+APPLY_AUTO = "auto"      # 付けていないもの（種族名のまま等）だけ入れ替える
 APPLY_ALWAYS = "always"  # いつも作った名前で登録する（ゲーム内の名前は使わない）
 APPLY_NEVER = "never"    # 入れない。ゲーム内の名前のまま
 APPLIES = (
+    (APPLY_AUTO, "自分で付けた名前は残し、それ以外は作った名前にする"),
     (APPLY_EMPTY, "名前が無い個体だけ、作った名前で登録する"),
     (APPLY_ALWAYS, "いつも、作った名前で登録する"),
     (APPLY_NEVER, "入れない（ゲーム内の名前のまま）"),
@@ -63,6 +67,51 @@ MODES = [
 ]
 
 NO_ZERO_TEXT = "0なし"
+
+
+# 作った名前の形。「M H47 S24 W37 M26」「F 12 (7/5)」「M O0 F0」「M 0なし」
+_MADE = re.compile(
+    r"^\s*(?:[MFU]\s+)?(?:"
+    r"(?:[A-Z]\d+[^\sA-Z0-9]{0,2}\s*)+"      # ステータス並び（変異の印つきも）
+    r"|\d+(?:\s*\(\d+\s*/\s*\d+\))?"      # 変異数だけ（オーバーフロー用）
+    r"|" + re.escape(NO_ZERO_TEXT) +
+    r")\s*$")
+
+
+def looks_made(name):
+    """この名前は、こちらが作った形をしているか。
+
+    作った名前なら、ステータスが変わったときに付け直してよい。
+    自分で付けた「エース」のような名前は、この形にならないので残る。
+    """
+    return bool(name) and bool(_MADE.match(name))
+
+
+def _plain(s):
+    """くらべる用。空白と大文字小文字の差を無くす。"""
+    return "".join((s or "").split()).lower()
+
+
+def looks_species(name, species_name):
+    """ゲーム内の名前が、種族名のままか。
+
+    名前を付けずに書き出すと「Deinonychus」や「Deinonychus - Lvl 224」の
+    ように種族名が入る。これは付けたうちに入らない。
+    """
+    if not name or not species_name:
+        return False
+    a = _plain(name)
+    b = _plain(species_name)
+    if a == b:
+        return True
+    # 「Deinonychus - Lvl 224」「Deinonychus Lv224」など、後ろにレベルが付く形
+    m = re.match(r"^(.*?)[\s\-]*(?:lvl?|レベル)\s*\d+$", a)
+    return bool(m and m.group(1) == b)
+
+
+def should_rename(name, species_name):
+    """「自分で付けた名前は残す」ときに、入れ替えてよいか。"""
+    return (not name) or looks_species(name, species_name) or looks_made(name)
 
 
 def make_name(creature, stat_list=None, with_sex=True, separator=" ",
