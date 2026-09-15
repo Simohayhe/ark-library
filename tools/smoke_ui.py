@@ -288,7 +288,10 @@ def share_page():
     page = app._pages["share"]
     page.mode.set("server")
     page.port.set("8793")
-    page._new_token()
+    page.opening.set("lan")
+    admin = app.share.issue("admin", "テスト管理者")
+    member = app.share.issue("member", "テスト友達")
+    page._fill_tokens()
     page._on_mode()
     app.update()
     page._save()
@@ -298,6 +301,14 @@ def share_page():
     from arklib import sync
     got = sync.ping("http://127.0.0.1:8793")
     _check(got.get("app") == "ark-library", "ping が返らない")
+    _check(sync.ping("http://127.0.0.1:8793", admin["token"]).get("role")
+           == "admin", "管理者と認識されない")
+    _check(sync.ping("http://127.0.0.1:8793", member["token"]).get("role")
+           == "member", "メンバーと認識されない")
+    _check(len(page.token_table.rows) >= 2, "合言葉の一覧が出ていない")
+    page.token_table.select_by(lambda r: r["_obj"] is member)
+    page._copy_invite()
+    _check("合言葉" in page.clipboard_get(), "つなぎ方がコピーされない")
     page.mode.set("client")
     page.url.set("http://127.0.0.1:8793")
     page._on_mode()
@@ -309,6 +320,8 @@ def share_page():
     page._save()
     app.update()
     _check(app.share.client is None, "止まっていない")
+    for t in list(app.share.tokens):
+        app.share.revoke(t["token"])
     app.show("settings")
     app.update()
 

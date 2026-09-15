@@ -9,7 +9,7 @@
 values.json / ASA-values.json から生成している。
 """
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 __all__ = ["ark", "stats", "species", "multipliers", "extractor", "extraction",
            "creature", "library", "breeding", "importers", "paths", "naming",
            "records", "colors", "sounds", "updater"]

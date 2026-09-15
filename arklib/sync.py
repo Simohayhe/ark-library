@@ -22,6 +22,7 @@
 設定は全部は配らない。取り込みフォルダや画面の色はその PC のものなので、
 **種族ごとの狙い・名前の付け方・理想個体**だけを共有する。
 """
+import hmac
 import json
 import threading
 import time
@@ -41,6 +42,11 @@ DEFAULT_PORT = 8787
 DEFAULT_INTERVAL = 5.0
 TOKEN_HEADER = "X-Ark-Token"
 PROTOCOL = 1
+
+# 合言葉の種類
+ROLE_ADMIN = "admin"      # 読み書きできる (自分の PC・任せる相手)
+ROLE_MEMBER = "member"    # 読むだけ (友達に配る用)
+ROLE_JA = {ROLE_ADMIN: "管理者 (書き込みもできる)", ROLE_MEMBER: "メンバー (見るだけ)"}
 
 # 共有する設定のあたま。これ以外 (取り込みフォルダ・テーマ・音量など) は
 # その PC のものなので配らない
@@ -234,13 +240,24 @@ def _apply_creature(library, d):
 class SyncServer(object):
     """共有元。自分の DB を HTTP で配る。
 
-    LAN か VPN の中で使う前提。合言葉 (トークン) が合わないものは弾く。
+    合言葉 (トークン) が合わないものは弾く。合言葉は 2 種類。
+
+        管理者 (admin)   … 読みも書きもできる。自分のもう 1 台や、任せる相手
+        メンバー (member) … 読むだけ。友達に配る用
+
+    友達に配るときは外 (インターネット) に出ることになるので、合言葉なしでは
+    動かさない。
     """
 
-    def __init__(self, db_path, token, port=DEFAULT_PORT, host="0.0.0.0",
-                 on_change=None):
+    def __init__(self, db_path, token=None, port=DEFAULT_PORT, host="0.0.0.0",
+                 on_change=None, tokens=None):
         self.db_path = db_path
-        self.token = token or ""
+        # tokens = [{"token": .., "role": .., "name": ..}, ...]
+        # 昔の「合言葉ひとつ」も管理者として通す
+        self.tokens = list(tokens or [])
+        if token:
+            self.tokens.append({"token": token, "role": ROLE_ADMIN,
+                                "name": "既定"})
         self.port = int(port or DEFAULT_PORT)
         self.host = host
         self.on_change = on_change
@@ -249,6 +266,25 @@ class SyncServer(object):
         self.error = ""
         self.hits = 0
         self.last_at = None
+        self.last_who = ""
+
+    @property
+    def token(self):
+        """昔ながらの「合言葉ひとつ」として見たときの値。"""
+        for t in self.tokens:
+            if t.get("role", ROLE_ADMIN) == ROLE_ADMIN:
+                return t.get("token") or ""
+        return self.tokens[0].get("token") if self.tokens else ""
+
+    def role_of(self, token):
+        """合言葉から役割を引く。合わなければ None。"""
+        if not self.tokens:
+            return ROLE_ADMIN          # 合言葉を決めていなければ素通し
+        for t in self.tokens:
+            want = t.get("token") or ""
+            if want and hmac.compare_digest(want, token or ""):
+                return t.get("role", ROLE_ADMIN), t.get("name", "")
+        return None
 
     def start(self):
         if self.httpd is not None:
@@ -261,10 +297,13 @@ class SyncServer(object):
             def log_message(self, *_a):
                 pass                      # 標準エラーに出さない
 
-            def _deny(self):
-                if not owner.token:
-                    return False
-                return self.headers.get(TOKEN_HEADER, "") != owner.token
+            def _role(self):
+                got = owner.role_of(self.headers.get(TOKEN_HEADER, ""))
+                if got is None:
+                    return None, ""
+                if isinstance(got, tuple):
+                    return got
+                return got, ""
 
             def _send(self, code, obj):
                 body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -276,11 +315,13 @@ class SyncServer(object):
 
             def do_GET(self):
                 url = urlparse(self.path)
+                role, who = self._role()
                 if url.path == "/ping":
                     return self._send(200, {"app": "ark-library",
                                             "protocol": PROTOCOL,
-                                            "needs_token": bool(owner.token)})
-                if self._deny():
+                                            "needs_token": bool(owner.tokens),
+                                            "role": role})
+                if role is None:
                     return self._send(403, {"error": "合言葉が違います"})
                 if url.path == "/pull":
                     q = parse_qs(url.query)
@@ -290,13 +331,18 @@ class SyncServer(object):
                         out = changes_since(lib, since)
                     finally:
                         lib.close()
-                    owner._touch()
+                    owner._touch(who or role)
                     return self._send(200, out)
                 return self._send(404, {"error": "not found"})
 
             def do_POST(self):
-                if self._deny():
+                role, who = self._role()
+                if role is None:
                     return self._send(403, {"error": "合言葉が違います"})
+                if role != ROLE_ADMIN:
+                    return self._send(
+                        403, {"error": "この合言葉では書き込めません "
+                                       "(メンバーは見るだけです)"})
                 if urlparse(self.path).path != "/push":
                     return self._send(404, {"error": "not found"})
                 n = int(self.headers.get("Content-Length") or 0)
@@ -309,7 +355,7 @@ class SyncServer(object):
                     counts = apply_changes(lib, payload)
                 finally:
                     lib.close()
-                owner._touch()
+                owner._touch(who or role)
                 if owner.on_change and any(counts.values()):
                     try:
                         owner.on_change(counts)
@@ -331,9 +377,11 @@ class SyncServer(object):
         self.thread.start()
         return True
 
-    def _touch(self):
+    def _touch(self, who=""):
         self.hits += 1
         self.last_at = time.time()
+        if who:
+            self.last_who = who
 
     def stop(self):
         if self.httpd is None:
@@ -505,9 +553,18 @@ def local_addresses():
     return out
 
 
-def make_token():
-    """合言葉を適当に作る。"""
-    import random
+def make_token(length=14):
+    """合言葉を適当に作る。
+
+    外 (インターネット) に出すことがあるので、当てずっぽうで通らない長さに
+    しておく。36 文字種 × 14 桁 ≒ 72 ビット。
+    """
+    import secrets
     import string
     pool = string.ascii_lowercase + string.digits
-    return "".join(random.choice(pool) for _ in range(12))
+    return "".join(secrets.choice(pool) for _ in range(length))
+
+
+def new_entry(role=ROLE_ADMIN, name=""):
+    return {"token": make_token(), "role": role, "name": name,
+            "created_at": time.time()}

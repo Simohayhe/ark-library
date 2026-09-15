@@ -181,6 +181,81 @@ def main():
     check("10.2 落ちずにエラーを持つ", bool(lonely.error), True)
     check("10.3 こちらのデータは無事", "あとから来た子" in names(game), True)
 
+    # ---- [11] 合言葉の種類 (管理者 / メンバー) ---------------------
+    print("\n[11] 管理者とメンバー")
+    admin = sync.new_entry(sync.ROLE_ADMIN, "自分のPC")
+    member = sync.new_entry(sync.ROLE_MEMBER, "ともだち")
+    check("11.1 別の合言葉になる", admin["token"] != member["token"], True)
+    check("11.2 十分な長さ", len(admin["token"]) >= 14, True)
+
+    srv2 = sync.SyncServer(host_db, port=0, host="127.0.0.1",
+                           tokens=[admin, member])
+    check("11.3 起動できる", srv2.start(), True)
+    url2 = "http://127.0.0.1:%d" % srv2.httpd.server_address[1]
+
+    check("11.4 管理者だと分かる",
+          sync.ping(url2, admin["token"]).get("role"), sync.ROLE_ADMIN)
+    check("11.5 メンバーだと分かる",
+          sync.ping(url2, member["token"]).get("role"), sync.ROLE_MEMBER)
+
+    friend_db = os.path.join(tmp, "friend.db")
+    friend = sync.SyncClient(friend_db, url2, token=member["token"])
+    pulled, pushed = friend.sync_once()
+    check("11.6 メンバーでも受け取れる", pulled > 0, True)
+
+    fl = Library(friend_db)
+    fl.save(mk("友達が作った子", ark_id=4001))
+    fl.close()
+    try:
+        friend.sync_once()
+        check("11.7 メンバーは書き込めない", False, True)
+    except Exception as e:
+        check("11.7 メンバーは書き込めない", "403" in str(e), True)
+    check("11.8 共有元は汚れない", "友達が作った子" in names(host), False)
+
+    boss = sync.SyncClient(os.path.join(tmp, "boss.db"), url2,
+                           token=admin["token"])
+    bl = Library(os.path.join(tmp, "boss.db"))
+    bl.save(mk("管理者が作った子", ark_id=4002))
+    bl.close()
+    boss.sync_once()
+    check("11.9 管理者は書き込める", "管理者が作った子" in names(host), True)
+
+    nobody = sync.SyncClient(os.path.join(tmp, "x.db"), url2, token="でたらめ")
+    try:
+        nobody.sync_once()
+        check("11.10 知らない合言葉は弾く", False, True)
+    except Exception:
+        check("11.10 知らない合言葉は弾く", True, True)
+
+    check("11.11 誰が来たか分かる", bool(srv2.last_who), True)
+    srv2.stop()
+
+    # ---- [12] 外に出す道具 ------------------------------------------
+    print("\n[12] 外に出す道具 (ポート開放なし)")
+    from arklib import tunnel
+    ip = tunnel.local_ip()
+    check("12.1 自分のアドレスが引ける", ip.count(".") == 3, True)
+    exe = tunnel.find_cloudflared()
+    print("       cloudflared: %s" % (exe or "(未インストール)"))
+    t = tunnel.CloudflareTunnel(9999, exe=exe)
+    if exe is None:
+        check("12.2 無ければ入れ方を案内する", t.start(), False)
+        check("12.3 案内に winget が出る", "winget" in t.error, True)
+    else:
+        check("12.2 起動できる", t.start(), True)
+        got = t.wait_for_url(30)
+        check("12.3 URL を貰える", got.startswith("https://"), True)
+        print("       %s" % got)
+        t.stop()
+    m = tunnel.UpnpMapping(9999)
+    print("       UPnP: 探しています…")
+    ok = m.start()
+    print("       %s" % ("外から %s" % m.url if ok else m.error))
+    check("12.4 UPnP は結果を持ち帰る", isinstance(ok, bool), True)
+    if ok:
+        m.stop()
+
     host.close()
     game.close()
 
