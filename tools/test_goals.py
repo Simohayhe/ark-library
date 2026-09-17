@@ -192,6 +192,45 @@ def main():
     dead.status = "dead"
     check("8.12 死亡は除く", breeding.can_mate(u1, dead), False)
 
+    print("\n[8.5] イベント色 / 変異色の見分け")
+    REX = "/Game/PrimalEarth/Dinos/Rex/Rex_Character_BP.Rex_Character_BP"
+    wild_ids = colors.possible_ids(REX, 0)
+    check("8.5.1 野生パレットが引ける", len(wild_ids) > 0, True)
+    natural = wild_ids[0]
+    odd = next(c for c in colors.all_ids() if c not in wild_ids)
+    print("       Rex の Body 野生色: %s  / 野生に無い色: %d (%s)"
+          % (wild_ids, odd, colors.name_of(odd)))
+
+    check("8.5.2 野生色は natural",
+          colors.classify(REX, 0, natural, bred=False), colors.NATURAL)
+    check("8.5.3 交配産でも野生色は natural",
+          colors.classify(REX, 0, natural, bred=True), colors.NATURAL)
+    check("8.5.4 テイム個体の野生外はイベント色",
+          colors.classify(REX, 0, odd, bred=False), colors.EVENT)
+    check("8.5.5 交配産の野生外は変異色",
+          colors.classify(REX, 0, odd, bred=True), colors.MUTATION)
+    check("8.5.6 色なしは判定しない",
+          colors.classify(REX, 0, 0, bred=True), colors.UNKNOWN)
+    check("8.5.7 色データの無い種族は判定しない",
+          colors.classify("bp/しらない生物", 0, 5, bred=True), colors.UNKNOWN)
+
+    check("8.5.8 印は ★ (イベント)",
+          colors.mark_of(REX, 0, odd, bred=False), "★")
+    check("8.5.9 印は ◆ (変異)",
+          colors.mark_of(REX, 0, odd, bred=True), "◆")
+    check("8.5.10 野生色に印は付かない",
+          colors.mark_of(REX, 0, natural, bred=True), "")
+
+    six = [natural, 0, 0, 0, odd, 0]
+    got = colors.odd_colors(REX, six, bred=True)
+    check("8.5.11 野生外だけ拾う", [(i, c) for i, c, _k in got], [(4, odd)])
+    check("8.5.12 一行にまとめられる",
+          colors.describe_odd(REX, six, bred=True).startswith("変異色:"), True)
+    check("8.5.13 テイムならイベント色と言う",
+          colors.describe_odd(REX, six, bred=False).startswith("イベント色:"), True)
+    check("8.5.14 ふつうの個体は空",
+          colors.describe_odd(REX, [natural, 0, 0, 0, 0, 0], bred=True), "")
+
     print("\n[9] 理想個体 (目標) までの近さ")
     OX, ME2 = ark.OXYGEN, ark.MELEE
     idl = ideal.Ideal({ark.HEALTH: 50, ME2: 40, OX: 0}, {0: 14})

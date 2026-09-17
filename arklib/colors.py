@@ -163,3 +163,72 @@ def possible_ids(species_bp, index):
     got = regions(species_bp)
     r = got[index] if 0 <= index < len(got) else None
     return list((r or {}).get("ids") or [])
+
+
+# ---- 野生の色か、そうでないか ------------------------------------------
+#
+# 種族ごとに「その領域に野生で出る色」が決まっている。そこに無い色が付いて
+# いたら、野生では出ないはずの色ということになる。出どころは 2 つ。
+#
+#     テイム / 野生の個体   … イベント中に湧いた個体 (イベントカラー)
+#     交配産の個体          … 色変異、または親から継いだイベントカラー
+#
+# どちらも「珍しい色」なので、一覧とオーバーレイで印を付けて知らせる。
+
+NATURAL = "natural"       # その種族の野生色
+EVENT = "event"           # 野生では出ない色 + テイム/野生個体 = イベント由来
+MUTATION = "mutation"     # 野生では出ない色 + 交配産 = 変異 (または親譲り)
+UNKNOWN = "unknown"       # 色データが無くて判断できない
+
+MARKS = {EVENT: "★", MUTATION: "◆"}
+KIND_JA = {NATURAL: "野生色", EVENT: "イベント色", MUTATION: "変異色",
+           UNKNOWN: "不明"}
+
+
+def is_natural(species_bp, index, color_id):
+    """その領域に野生で出る色か。分からなければ None。"""
+    if not color_id:
+        return None
+    ids = possible_ids(species_bp, index)
+    if not ids:
+        return None
+    return int(color_id) in ids
+
+
+def classify(species_bp, index, color_id, bred=False):
+    """色の出どころを見当づける。"""
+    got = is_natural(species_bp, index, color_id)
+    if got is None:
+        return UNKNOWN
+    if got:
+        return NATURAL
+    return MUTATION if bred else EVENT
+
+
+def mark_of(species_bp, index, color_id, bred=False):
+    """一覧のセルに添える印。ふつうの色なら空。"""
+    return MARKS.get(classify(species_bp, index, color_id, bred), "")
+
+
+def odd_colors(species_bp, colors, bred=False):
+    """野生では出ない色だけを拾う。[(領域番号, 色ID, 種類)]"""
+    out = []
+    for i, cid in enumerate(list(colors or [])[:REGION_COUNT]):
+        if not cid:
+            continue
+        kind = classify(species_bp, i, cid, bred)
+        if kind in (EVENT, MUTATION):
+            out.append((i, int(cid), kind))
+    return out
+
+
+def describe_odd(species_bp, colors, bred=False):
+    """「イベント色: 体 = Glacial (96)」のような一行。無ければ空。"""
+    got = odd_colors(species_bp, colors, bred)
+    if not got:
+        return ""
+    kind = got[0][2]
+    return "%s: %s" % (KIND_JA.get(kind, kind),
+                       "、".join("%s = %s" % (region_name(species_bp, i),
+                                              label_of(cid))
+                                 for i, cid, _k in got))

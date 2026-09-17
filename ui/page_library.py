@@ -281,7 +281,11 @@ class LibraryPage(tk.Frame):
             for s, lv in sorted(self.tops.items()))
         done = len(info["complete"])
         text = "%s: %s%s" % ("目標" if has_min else "最高値", tops_text,
-                             ("  ★完成個体 %d体" % done) if done else "")
+                             ("  完成個体 %d体" % done) if done else "")
+        odd = sum(1 for c in self.creatures
+                  if arkcolors.odd_colors(c.species_bp, c.colors, c.is_bred))
+        if odd:
+            text += "   色 ★イベント/◆変異 %d体" % odd
         idl = getattr(self, "ideal", None)
         if idl is not None and not idl.empty:
             ranked = arkideal.rank(self.creatures, idl, self.ideal_refs,
@@ -324,7 +328,8 @@ class LibraryPage(tk.Frame):
         for i in self._color_regions():
             cols.append(Col("c%d" % i,
                             arkcolors.region_name(self.species_bp, i)[:4],
-                            46, align="center",
+                            52, align="center",
+                            tooltip="★ イベント色 / ◆ 変異色 (野生では出ない色)",
                             sort_key=lambda r, k="c%d" % i: r.get("_" + k, 0)))
         if getattr(self, "ideal", None) is not None and not self.ideal.empty:
             cols.append(Col("ideal", "理想", 56, align="e",
@@ -369,7 +374,9 @@ class LibraryPage(tk.Frame):
             }
             for i in self._color_regions():
                 cid = c.colors[i] if i < len(c.colors) else 0
-                row["c%d" % i] = str(cid) if cid else ""
+                # 野生では出ない色に印を付ける (★ イベント / ◆ 変異)
+                mark = arkcolors.mark_of(c.species_bp, i, cid, c.is_bred)
+                row["c%d" % i] = ("%s%d" % (mark, cid)) if cid else ""
                 row["_c%d" % i] = cid
             idl = getattr(self, "ideal", None)
             if idl is not None and not idl.empty:
@@ -460,6 +467,9 @@ class LibraryPage(tk.Frame):
                                c.levels_wild[s], c.levels_mut[s], c.levels_dom[s]))
         if vals:
             parts.append("  ".join(vals))
+        odd = arkcolors.describe_odd(c.species_bp, c.colors, c.is_bred)
+        if odd:
+            parts.append("%s  (この種族の野生では出ない色)" % odd)
         idl = getattr(self, "ideal", None)
         if idl is not None and not idl.empty:
             parts.append("理想個体: " + idl.score(

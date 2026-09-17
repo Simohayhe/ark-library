@@ -14,7 +14,7 @@ ARK が「フルスクリーン (専用)」だと Windows の仕様上どんな�
 import ctypes
 import tkinter as tk
 
-from arklib import ark, records
+from arklib import ark, colors as arkcolors, records
 
 from . import theme
 from .page_library import SHORT_JA
@@ -113,6 +113,15 @@ class StatOverlay(object):
                 text += " (変異%d)" % (creature.levels_mut[s] // 2)
             tk.Label(cell, text=text, bg=theme.CARD, fg=level_fg,
                      font=theme.F.get("num_s")).pack(anchor="w")
+
+        # 野生では出ない色 (イベント色 / 変異色) が付いていたら目立たせる
+        odd = arkcolors.describe_odd(creature.species_bp, creature.colors,
+                                     creature.is_bred)
+        if odd:
+            line = tk.Frame(box, bg=theme.CARD)
+            line.pack(fill="x", padx=18, pady=(0, 2))
+            tk.Label(line, text=odd, bg=theme.CARD, fg=theme.LEMON,
+                     font=theme.F.get("cute_b")).pack(side="left")
 
         # 理想個体までの近さ
         if ideal_score is not None and ideal_score.items:

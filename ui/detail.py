@@ -3,7 +3,7 @@
 import tkinter as tk
 from tkinter import messagebox
 
-from arklib import ark, breeding, stats
+from arklib import ark, breeding, colors as arkcolors, stats
 from arklib.creature import STATUS_JA, ark_id_display
 
 from . import theme
@@ -106,6 +106,47 @@ class CreatureDialog(tk.Toplevel):
             tk.Label(b2, text=str(v), bg=theme.CARD, fg=theme.INK,
                      font=theme.F.get("small"), anchor="w",
                      wraplength=430, justify="left").grid(row=i, column=1, sticky="w")
+
+        # ---- 色 ----
+        regions = (arkcolors.used_regions(c.species_bp)
+                   if arkcolors.available() else [])
+        if regions:
+            card4 = theme.Card(self, bg=theme.BG)
+            card4.pack(fill="x", padx=16, pady=4)
+            b4 = card4.body
+            head4 = tk.Frame(b4, bg=theme.CARD)
+            head4.pack(fill="x")
+            tk.Label(head4, text="色", bg=theme.CARD, fg=theme.INK_SUB,
+                     font=theme.F.get("small")).pack(side="left")
+            odd = arkcolors.describe_odd(c.species_bp, c.colors, c.is_bred)
+            if odd:
+                tk.Label(head4, text=odd, bg=theme.CARD, fg=theme.PINK_DK,
+                         font=theme.F.get("small")).pack(side="left", padx=10)
+            grid4 = tk.Frame(b4, bg=theme.CARD)
+            grid4.pack(fill="x", pady=(4, 0))
+            for n, i in enumerate(regions):
+                cid = c.colors[i] if i < len(c.colors) else 0
+                kind = arkcolors.classify(c.species_bp, i, cid, c.is_bred)
+                box = tk.Frame(grid4, bg=theme.CARD)
+                box.grid(row=n // 3, column=n % 3, sticky="w", padx=(0, 14),
+                         pady=2)
+                hexcol = arkcolors.hex_of(cid)
+                chip = tk.Frame(box, bg=hexcol or theme.BG_SOFT, width=16,
+                                height=16, highlightthickness=1,
+                                highlightbackground=theme.LINE)
+                chip.pack(side="left", padx=(0, 5))
+                chip.pack_propagate(False)
+                fg = (theme.PINK_DK if kind in (arkcolors.EVENT,
+                                                arkcolors.MUTATION)
+                      else theme.INK)
+                tk.Label(box, text="%s %s%s"
+                         % (arkcolors.region_name(c.species_bp, i),
+                            arkcolors.label_of(cid),
+                            "  " + arkcolors.KIND_JA[kind]
+                            if kind in (arkcolors.EVENT, arkcolors.MUTATION)
+                            else ""),
+                         bg=theme.CARD, fg=fg,
+                         font=theme.F.get("small")).pack(side="left")
 
         if c.ambiguous:
             tk.Label(self, text="⚠ この個体は表示値だけではレベルの内訳が一つに"
