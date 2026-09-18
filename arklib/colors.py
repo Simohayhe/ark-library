@@ -22,6 +22,16 @@ import sys
 REGION_COUNT = 6
 NO_COLOR = 0
 
+# ARK ASA の色 ID の並び (ASA-values.json の dyeStartIndex と公式 wiki より)
+#
+#     1〜127    生物色。実際に定義があるのは 1〜100 で、101〜127 は欠番
+#     128〜254  染料色。**野生には出ない**。変異・染料・イベント飴でのみ付く
+#     255       未設定
+#
+# つまり ID が 128 以上なら、種族のパレットを見るまでもなく野生の色ではない。
+DYE_FIRST_ID = 128
+UNSET_COLOR_ID = 255
+
 _DATA = None
 
 
@@ -116,7 +126,11 @@ def closest_id(rgba):
     if r == 0 and g == 0 and b == 0 and a == 1:
         return NO_COLOR
     best_id, best_d = NO_COLOR, None
-    for cid, (_name, c) in _load()["colors"].items():
+    # ID の小さい順に見る。生物色と染料色で RGBA が丸かぶりのものが 7 組
+    # あり (Red と Red Coloring など)、表示値からは区別できない。
+    # そのときは生物色の方を採る (野生で出るのはそちらなので)
+    for cid in sorted(_load()["colors"]):
+        c = _load()["colors"][cid][1]
         d = ((c[0] - r) ** 2 + (c[1] - g) ** 2 + (c[2] - b) ** 2
              + (c[3] - a) ** 2)
         if best_d is None or d < best_d:
@@ -185,10 +199,21 @@ KIND_JA = {NATURAL: "野生色", EVENT: "イベント色", MUTATION: "変異色"
            UNKNOWN: "不明"}
 
 
+def is_dye(color_id):
+    """染料域 (ID 128 以降) の色か。野生には出ない色。"""
+    try:
+        return DYE_FIRST_ID <= int(color_id or 0) < UNSET_COLOR_ID
+    except (TypeError, ValueError):
+        return False
+
+
 def is_natural(species_bp, index, color_id):
     """その領域に野生で出る色か。分からなければ None。"""
     if not color_id:
         return None
+    # 染料域は種族に関係なく野生では出ない。パレットを見るまでもない
+    if is_dye(color_id):
+        return False
     ids = possible_ids(species_bp, index)
     if not ids:
         return None
@@ -228,7 +253,20 @@ def describe_odd(species_bp, colors, bred=False):
     if not got:
         return ""
     kind = got[0][2]
-    return "%s: %s" % (KIND_JA.get(kind, kind),
-                       "、".join("%s = %s" % (region_name(species_bp, i),
-                                              label_of(cid))
-                                 for i, cid, _k in got))
+    parts = []
+    for i, cid, _k in got:
+        # 染料域は「そもそも野生に存在しない色」なので、その旨を添える
+        note = " [染料域]" if is_dye(cid) else ""
+        parts.append("%s = %s%s" % (region_name(species_bp, i),
+                                    label_of(cid), note))
+    return "%s: %s" % (KIND_JA.get(kind, kind), "、".join(parts))
+
+
+def creature_ids():
+    """野生に出うる側の色 ID (生物色)。"""
+    return [c for c in all_ids() if c < DYE_FIRST_ID]
+
+
+def dye_ids():
+    """染料域の色 ID。"""
+    return [c for c in all_ids() if is_dye(c)]

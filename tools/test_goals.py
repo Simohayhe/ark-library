@@ -231,6 +231,44 @@ def main():
     check("8.5.14 ふつうの個体は空",
           colors.describe_odd(REX, [natural, 0, 0, 0, 0, 0], bred=True), "")
 
+    # ---- 染料域 (ID 128 以降) は野生に出ない ----
+    # ASA-values.json の dyeStartIndex と公式 wiki より
+    #   1〜127 生物色 (定義は 1〜100) / 128〜254 染料色 / 255 未設定
+    check("8.5.15 染料の始まりは 128", colors.DYE_FIRST_ID, 128)
+    check("8.5.16 染料色が入っている", len(colors.dye_ids()), 127)
+    check("8.5.17 生物色は 100 色", len(colors.creature_ids()), 100)
+    check("8.5.18 127 以下は染料ではない", colors.is_dye(100), False)
+    check("8.5.19 128 は染料", colors.is_dye(128), True)
+    check("8.5.20 254 も染料", colors.is_dye(254), True)
+    check("8.5.21 255 は未設定なので染料ではない", colors.is_dye(255), False)
+    check("8.5.22 染料色に名前がある",
+          colors.name_of(128), "Burn Coloring")
+    check("8.5.23 染料色に色が引ける", bool(colors.hex_of(254)), True)
+
+    # 種族のパレットを見るまでもなく野生ではない
+    check("8.5.24 染料色は種族に関係なく野生外",
+          colors.is_natural(REX, 0, 128), False)
+    check("8.5.25 色データの無い種族でも染料色は分かる",
+          colors.is_natural("bp/しらない生物", 0, 128), False)
+    check("8.5.26 交配産の染料色は変異色",
+          colors.classify(REX, 0, 128, bred=True), colors.MUTATION)
+    check("8.5.27 テイムの染料色はイベント色",
+          colors.classify(REX, 0, 200, bred=False), colors.EVENT)
+    check("8.5.28 説明に染料域と書く",
+          "[染料域]" in colors.describe_odd(REX, [128, 0, 0, 0, 0, 0],
+                                            bred=True), True)
+
+    # 表示値 (RGBA) から引き直すとき、生物色と染料色で
+    # まったく同じ RGBA のものが 7 組ある。生物色の方を採る
+    check("8.5.29 赤は 131 でなく 1",
+          colors.closest_id((1.0, 0.0, 0.0, 0.0)), 1)
+    check("8.5.30 白は 233 でなく 18",
+          colors.closest_id((1.0, 1.0, 1.0, 0.0)), 18)
+    check("8.5.31 染料にしか無い色は染料として引ける",
+          colors.closest_id(colors.rgba_of(128)), 128)
+    check("8.5.32 染料の端も引ける",
+          colors.closest_id(colors.rgba_of(254)), 254)
+
     print("\n[9] 理想個体 (目標) までの近さ")
     OX, ME2 = ark.OXYGEN, ark.MELEE
     idl = ideal.Ideal({ark.HEALTH: 50, ME2: 40, OX: 0}, {0: 14})

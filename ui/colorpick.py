@@ -73,9 +73,15 @@ class ColorDialog(tk.Toplevel):
                     if arkcolors.hex_of(c)]
         if wild:
             self._section("この領域に野生で出る色", wild, current)
-        others = [c for c in arkcolors.all_ids() if c not in wild]
-        self._section("すべての色" if not wild else "そのほかの色 (交配・変異で出るもの)",
-                      others, current)
+        rest = [c for c in arkcolors.creature_ids() if c not in wild]
+        if rest:
+            self._section("そのほかの生物色 (この領域には野生で出ない)", rest,
+                          current)
+        dyes = arkcolors.dye_ids()
+        if dyes:
+            self._section("染料色 (ID %d 以降・野生には出ない。変異や"
+                          "イベントで付く)" % arkcolors.DYE_FIRST_ID,
+                          dyes, current)
 
         box = tk.Frame(self, bg=theme.BG)
         box.pack(fill="x", padx=16, pady=(6, 14))
