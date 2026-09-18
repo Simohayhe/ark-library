@@ -24,13 +24,18 @@ NO_COLOR = 0
 
 # ARK ASA の色 ID の並び (ASA-values.json の dyeStartIndex と公式 wiki より)
 #
+#     0         その領域を使っていない (NO_COLOR)
 #     1〜127    生物色。実際に定義があるのは 1〜100 で、101〜127 は欠番
 #     128〜254  染料色。**野生には出ない**。変異・染料・イベント飴でのみ付く
-#     255       未設定
+#     255       未設定 (ASA)。ASE ではこれが 227 だが、ASA の 227 は
+#               ふつうの染料色 (Gunmetal Coloring) なので特別扱いしない
 #
 # つまり ID が 128 以上なら、種族のパレットを見るまでもなく野生の色ではない。
+# 逆に、定義が無い ID (欠番・未設定) は「分からない」として扱う。存在しない
+# 色名で「変異色」と言ってしまわないため。
 DYE_FIRST_ID = 128
-UNSET_COLOR_ID = 255
+UNDEFINED_COLOR_ID = 255        # ASA。ASE は 227
+UNSET_COLOR_ID = UNDEFINED_COLOR_ID     # 古い名前
 
 _DATA = None
 
@@ -104,7 +109,19 @@ def _c(v):
 def label_of(color_id):
     if not color_id:
         return "なし"
+    if int(color_id) == UNDEFINED_COLOR_ID:
+        return "未設定 (%d)" % color_id
+    if not is_defined(color_id):
+        return "定義の無い色 (%d)" % color_id
     return "%s (%d)" % (name_of(color_id), color_id)
+
+
+def is_defined(color_id):
+    """ゲームに定義がある色 ID か。欠番・未設定なら False。"""
+    try:
+        return int(color_id or 0) in _load()["colors"]
+    except (TypeError, ValueError):
+        return False
 
 
 def all_ids():
@@ -200,16 +217,21 @@ KIND_JA = {NATURAL: "野生色", EVENT: "イベント色", MUTATION: "変異色"
 
 
 def is_dye(color_id):
-    """染料域 (ID 128 以降) の色か。野生には出ない色。"""
+    """染料域 (ID 128〜254) の色か。野生には出ない色。"""
     try:
-        return DYE_FIRST_ID <= int(color_id or 0) < UNSET_COLOR_ID
+        cid = int(color_id or 0)
     except (TypeError, ValueError):
         return False
+    return DYE_FIRST_ID <= cid < UNDEFINED_COLOR_ID and is_defined(cid)
 
 
 def is_natural(species_bp, index, color_id):
-    """その領域に野生で出る色か。分からなければ None。"""
-    if not color_id:
+    """その領域に野生で出る色か。分からなければ None。
+
+    0 (領域を使っていない) と、定義の無い ID (101〜127 の欠番や 255 の
+    未設定) は判断しない。
+    """
+    if not color_id or not is_defined(color_id):
         return None
     # 染料域は種族に関係なく野生では出ない。パレットを見るまでもない
     if is_dye(color_id):

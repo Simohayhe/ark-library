@@ -269,6 +269,45 @@ def main():
     check("8.5.32 染料の端も引ける",
           colors.closest_id(colors.rgba_of(254)), 254)
 
+    # ---- 定義の無い ID は判定しない ----
+    #   0        その領域を使っていない
+    #   101〜127 欠番 (ゲームに定義が無い)
+    #   255      未設定 (ASA)
+    # ここを「野生に無い色」と数えると、存在しない色名で変異色だと
+    # 言ってしまう
+    check("8.5.33 0 は色なし", colors.label_of(0), "なし")
+    check("8.5.34 0 は定義なし", colors.is_defined(0), False)
+    check("8.5.35 0 は判定しない",
+          colors.classify(REX, 0, 0, bred=True), colors.UNKNOWN)
+    check("8.5.36 0 に印は付かない", colors.mark_of(REX, 0, 0, True), "")
+
+    check("8.5.37 101 は欠番", colors.is_defined(101), False)
+    check("8.5.38 127 も欠番", colors.is_defined(127), False)
+    check("8.5.39 100 は定義あり", colors.is_defined(100), True)
+    check("8.5.40 128 は定義あり", colors.is_defined(128), True)
+    check("8.5.41 欠番は判定しない",
+          colors.classify(REX, 0, 101, bred=True), colors.UNKNOWN)
+    check("8.5.42 欠番に印は付かない", colors.mark_of(REX, 0, 101, True), "")
+    check("8.5.43 欠番はそう書く", colors.label_of(101), "定義の無い色 (101)")
+
+    check("8.5.44 255 は未設定", colors.UNDEFINED_COLOR_ID, 255)
+    check("8.5.45 255 はそう書く", colors.label_of(255), "未設定 (255)")
+    check("8.5.46 255 は染料ではない", colors.is_dye(255), False)
+    check("8.5.47 255 は判定しない",
+          colors.classify(REX, 0, 255, bred=True), colors.UNKNOWN)
+
+    # ASE では 227 が未設定の印だが、ASA の 227 はふつうの染料色
+    check("8.5.48 ASA の 227 は染料色", colors.is_dye(227), True)
+    check("8.5.49 227 に名前がある", colors.name_of(227), "Gunmetal Coloring")
+
+    check("8.5.50 欠番と未設定だけなら何も出ない",
+          colors.odd_colors(REX, [0, 101, 255, 0, 0, 0], bred=True), [])
+    check("8.5.51 その説明も空",
+          colors.describe_odd(REX, [0, 101, 255, 0, 0, 0], bred=True), "")
+    check("8.5.52 まともな染料色は今まで通り拾う",
+          [c for _i, c, _k in colors.odd_colors(REX, [128, 101, 255, 0, 0, 0],
+                                                bred=True)], [128])
+
     print("\n[9] 理想個体 (目標) までの近さ")
     OX, ME2 = ark.OXYGEN, ark.MELEE
     idl = ideal.Ideal({ark.HEALTH: 50, ME2: 40, OX: 0}, {0: 14})
