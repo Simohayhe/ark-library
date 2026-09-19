@@ -572,7 +572,11 @@ tools/                テストと開発用
 installer/            Inno Setup のインストーラ定義
 ```
 
-データベースは `%LOCALAPPDATA%\ArkLibrary\library.db`。
+データベースは `%LOCALAPPDATA%\ArkLibrary\library.db`。**WAL** で開く。
+PC 間の共有を入れてから、この DB は同時に何本も開かれるようになった
+(画面 / 共有サーバーのリクエストごと / 同期スレッド)。既定の journal だと
+書き込み中は読み取りが止まり、取り込んだ瞬間の名前コピーが数百 ms 待たされて
+いた。WAL なら読み手は書き手を待たない (実測: 最悪 185ms → 0.3ms)。
 
 ### テスト
 

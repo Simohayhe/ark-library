@@ -138,9 +138,47 @@ class Library(object):
             os.makedirs(d)
         self.db = sqlite3.connect(self.path, timeout=15.0)
         self.db.row_factory = sqlite3.Row
-        self.db.executescript(SCHEMA)
+        self._tune()
+        self._ensure_schema()
         self._migrate()
         self.db.commit()
+
+    def _tune(self):
+        """同時に開いても待たされないようにする。
+
+        PC 間の共有を入れてから、この DB は**同時に何本も開かれる**ように
+        なった (画面・共有サーバーの各リクエスト・同期スレッド)。既定の
+        journal だと書き込み中は読み取りが止まるので、取り込んだ瞬間の
+        名前コピーが数百 ms 待たされることがあった。
+
+        WAL なら読み手は書き手を待たない。ネットワーク越しのファイルでは
+        使えないが、このアプリは DB をネットワークに置かない作りなので問題
+        にならない (置きたい場合のために、失敗しても黙って既定のまま続ける)。
+        """
+        for pragma in ("PRAGMA journal_mode=WAL",
+                       "PRAGMA synchronous=NORMAL"):
+            try:
+                self.db.execute(pragma)
+            except sqlite3.Error:
+                pass
+
+    def _ensure_schema(self):
+        """表が無いときだけ作る。
+
+        共有サーバーはリクエストごとに DB を開き直す。毎回 executescript を
+        流すと、そのたびに書き込みロックを取ってしまう。
+        """
+        row = self.db.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'creatures'").fetchone()
+        if row is None:
+            self.db.executescript(SCHEMA)
+            return
+        # 表はあるが、あとから足した表が無いことがある (古い DB)
+        have = {r["name"] for r in self.db.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if not {"deletions", "sync_state"} <= have:
+            self.db.executescript(SCHEMA)
 
     def _migrate(self):
         """古い DB に足りない列を足す。

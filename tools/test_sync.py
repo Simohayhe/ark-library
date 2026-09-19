@@ -256,6 +256,44 @@ def main():
     if ok:
         m.stop()
 
+    # ---- [13] 同期中でも読み取りが止まらないこと --------------------
+    print("\n[13] 同期の書き込みが読み取りを止めない")
+    check("13.1 WAL になっている",
+          host.db.execute("PRAGMA journal_mode").fetchone()[0].lower(), "wal")
+
+    import statistics
+    import threading
+
+    stop = threading.Event()
+
+    def writer():
+        # 共有サーバーがやること: リクエストごとに開いて書いて閉じる
+        while not stop.is_set():
+            lib = Library(host_db)
+            try:
+                lib.set_setting("sync_pull_at", time.time())
+                lib.set_setting("sync_push_at", time.time())
+            finally:
+                lib.close()
+
+    th = threading.Thread(target=writer, daemon=True)
+    th.start()
+    reader = Library(host_db)
+    waits = []
+    for _ in range(200):
+        t0 = time.perf_counter()
+        reader.get_setting("naming_mode", None)
+        reader.all_creatures()
+        waits.append((time.perf_counter() - t0) * 1000)
+    stop.set()
+    th.join(timeout=5)
+    reader.close()
+    worst = max(waits)
+    print("       読み取り 中央値 %.2f ms / 最悪 %.2f ms"
+          % (statistics.median(waits), worst))
+    # 既定の journal だと書き込み中に 100ms 超えて待たされることがあった
+    check("13.2 最悪でも 50ms 待たない (%.1f ms)" % worst, worst < 50, True)
+
     host.close()
     game.close()
 
